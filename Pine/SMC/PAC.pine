@@ -1,0 +1,1309 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Wei_Xuan
+
+//@version=5
+strategy("WeiXuan-Price Action Concepts", overlay=true
+  , max_labels_count = 500
+  , max_lines_count = 500
+  , max_boxes_count = 500
+  , max_bars_back = 500)
+//-----------------------------------------------------------------------------{
+// Constants
+//-----------------------------------------------------------------------------{
+color TRANSP_CSS = #ffffff00
+
+string BULLISH = 'Bullish'                            //  多頭
+string BEARISH = 'Bearish'                            //  空頭
+string SMS_BMS = 'SMS OR BMS'                         //   
+string SMS = 'SMS'                                    //      
+string BMS = 'BMS'                                    //      
+string MITIGATED_OB = 'Mitigated OB'                  // 已緩解的訂單區塊(Mitigated Order Block)
+string WITHIN_OB = 'Within OB'                        // 在訂單區塊內(Within Order Block)
+string ENTERED_OB = 'Entered OB'                      // 進入訂單區塊(Entered Order Block)
+string NEW_IMBALANCE = 'New Imbalance'                // 新的不平衡(New Imbalance)
+string ENTERED_IMBALANCE = 'Entered Imbalance'        // 進入不平衡(Entered Imbalance)
+string WITHIN_IMBALANCE = 'Within Imbalance'          // 在不平衡內(Within Imbalance)  
+string MITIGATED_IMBALANCE = 'Mitigated Imbalance'    // 已緩解的不平衡(Mitigated Imbalance)
+
+string GREATER_THAN = 'Greater Than'
+string LOWER_THAN = 'Lower Than'
+string EQUAL = 'Equql'
+string CROSSING_OVER = 'Crossing Over'
+string CROSSING_UNDER = 'Crossing Under'
+string CROSSING = 'Crossing'
+
+string PRICE = 'Price'
+string CURRENCY = 'Currency'
+string PERCENT = '%'
+string ATR = 'ATR'
+
+string CLOSE = 'Close'
+string WICK = 'Wick'
+string AVERAGE = 'Average'
+
+string FVG = 'FVG'
+string VI = 'VI'
+string OG = 'OG'
+string BPR = 'BPR'
+
+// timefr
+int tf_1 = 1
+int tf_5 = 5
+int tf_10 = 10
+int tf_15 = 15
+int tf_20 = 20
+int tf_30 = 30
+int tf_1h = 60
+//-----------------------------------------------------------------------------}
+
+//-----------------------------------------------------------------------------{
+// Settings
+//-----------------------------------------------------------------------------{
+// General
+//----------------------------------------{
+
+useDateFilter = input.bool(true, title="USE BACKTEST RANGE⏲️", group="BACKTEST RANGE")
+backtestStartDate = input.time(timestamp("2020-10-10T14:00:00"), title="StartDate", group="BACKTEST RANGE")
+backtestEndDate = input.time(timestamp("2099-11-10T14:00:00"), title="EndDate", group="BACKTEST RANGE")
+inTradeWindow = not useDateFilter or (time >= backtestStartDate and time < backtestEndDate)
+show_debug = input.bool(false, title="show_debug", group="BACKTEST RANGE")
+//----------------------------------------}
+// MarKet Structures
+//----------------------------------------{
+ms_length = input.int(10,  title = 'Length'
+  , minval = 1
+  , group = 'MARKET STRUCTURES')
+
+ms_tf = input.int(tf_15, "Timeframe"
+  , options = [tf_1, tf_5, tf_10, tf_15, tf_20, tf_30, tf_1h]
+  , group = 'MARKET STRUCTURES')
+
+show_swings = input(false, 'Show Swings Points'
+  , group = 'MARKET STRUCTURES')
+
+bull_css = input.color(#089981, 'bull_css'
+  , inline = 'CSS'
+  , group = 'MARKET STRUCTURES')
+
+bear_css = input.color(#f23645, 'bear_css'
+  , inline = 'CSS'
+  , group = 'MARKET STRUCTURES')
+
+
+//----------------------------------------}
+// VolumeTric Order Blocks
+//----------------------------------------{
+ob_length = input.int(10,  title = 'Length'
+  , minval = 1
+  , group = 'VolumeTric Order Blocks')
+
+ob_last = input.int(5,  title = 'ob_last'
+  , minval = 1
+  , group = 'VolumeTric Order Blocks')
+
+ob_mitigation_method = input.string(WICK, title = 'Mitigation Method'
+  , options = [CLOSE, WICK, AVERAGE]
+  , group = 'VolumeTric Order Blocks')
+
+ob_tf = input.int(tf_15, "Timeframe"
+  , options = [tf_1, tf_5, tf_10, tf_15, tf_20, tf_30, tf_1h]
+  , group = 'VolumeTric Order Blocks')
+
+show_swings_ob = input(false, 'Show OB Swings Points'
+  , group = 'VolumeTric Order Blocks')
+
+ob_bull_css = input.color(#589908, 'ob_bull_css'
+  , inline = 'CSS'
+  , group = 'VolumeTric Order Blocks')
+
+ob_bear_css = input.color(#f236c3, 'ob_bear_css'
+  , inline = 'CSS'
+  , group = 'VolumeTric Order Blocks')
+
+//----------------------------------------}
+// Imbalances
+//----------------------------------------{
+ib_method = input.string(FVG, title = 'Imbalance'
+  , options = [FVG, VI, OG, BPR]
+  , group = 'Imbalances')
+
+ib_mitigation_method = input.string(WICK, title = 'Mitigation Method'
+  , options = [CLOSE, WICK, AVERAGE]
+  , group = 'Imbalances')
+
+ib_tf = input.int(tf_15, "Timeframe"
+  , options = [tf_1, tf_5, tf_10, tf_15, tf_20, tf_30, tf_1h]
+  , inline = 'Imbalances'
+  , group = 'Imbalances')
+
+ib_threshold = input.int(0,  title = 'Volatlity Threshold'
+  , minval = 0
+  , group = 'Imbalances')
+
+bull_fvg_css = input.color(color.new(#17fa72, 70), 'bull_fvg_css'
+  , inline = 'CSS'
+  , group = 'Imbalances')
+
+bear_fvg_css = input.color(color.new(#fa282f, 70), 'bear_fvg_css'
+  , inline = 'CSS'
+  , group = 'Imbalances')
+
+
+
+//----------------------------------------}
+// Long Conditions  做多條件
+//----------------------------------------{
+
+// Long Condition1 {
+long_condition1_check = input.bool(false,  title = 'Condition1'
+  , inline = 'Long Condition1'
+  , group = 'Long Conditions')
+
+long_condition1_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Long Condition1'
+  , group = 'Long Conditions')
+
+long_condition1_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Long Condition1'
+  , group = 'Long Conditions')
+
+long_condition1_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Long Condition1'
+  , group = 'Long Conditions')
+
+// }
+
+// Long  Condition2 {
+long_condition2_check = input.bool(false,  title = 'Condition2'
+  , inline = 'Long Condition2'
+  , group = 'Long Conditions')
+
+long_condition2_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Long Condition2'
+  , group = 'Long Conditions')
+
+long_condition2_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Long Condition2'
+  , group = 'Long Conditions')
+
+long_condition2_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Long Condition2'
+  , group = 'Long Conditions')
+
+// }
+
+// Long Condition3 {
+long_condition3_check = input.bool(false,  title = 'Condition3'
+  , inline = 'Long Condition3'
+  , group = 'Long Conditions')
+
+long_condition3_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Long Condition3'
+  , group = 'Long Conditions')
+
+long_condition3_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Long Condition3'
+  , group = 'Long Conditions')
+
+long_condition3_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Long Condition3'
+  , group = 'Long Conditions')
+
+// }
+
+// Long Condition4 {
+long_condition4_check = input.bool(false,  title = 'Condition4'
+  , inline = 'Long Condition4'
+  , group = 'Long Conditions')
+
+long_condition4_source = input.source(close, title = ''
+  , inline = 'Long Condition4'
+  , group = 'Long Conditions')
+
+long_condition4_judge = input.string(EQUAL, title = ''
+  , options = [GREATER_THAN, LOWER_THAN, EQUAL, CROSSING_OVER, CROSSING_UNDER, CROSSING]
+  , inline = 'Long Condition4'
+  , group = 'Long Conditions')
+
+long_condition4_source2 = input.source(close, title = ''
+  , inline = 'Long Condition4'
+  , group = 'Long Conditions')
+
+long_condition4_step = input.int(1, title = 'Condition4 Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Long Condition4'
+  , group = 'Long Conditions')
+
+// }
+
+// Long Condition5 {
+long_condition5_check = input.bool(false,  title = 'Condition5'
+  , inline = 'Long Condition5'
+  , group = 'Long Conditions')
+
+long_condition5_source = input.source(close, title = ''
+  , inline = 'Long Condition5'
+  , group = 'Long Conditions')
+
+long_condition5_judge = input.string(EQUAL, title = ''
+  , options = [GREATER_THAN, LOWER_THAN, EQUAL, CROSSING_OVER, CROSSING_UNDER, CROSSING]
+  , inline = 'Long Condition5'
+  , group = 'Long Conditions')
+
+long_condition5_source2 =  input.int(1, title = ''
+  , inline = 'Long Condition5'
+  , group = 'Long Conditions')
+
+long_condition5_step = input.int(1, title = 'Condition5 Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Long Condition5'
+  , group = 'Long Conditions')
+
+// }
+
+//----------------------------------------}
+// Short Conditions 做空條件
+//----------------------------------------{
+
+// Short Condition1 {
+short_condition1_check = input.bool(true,  title = 'Condition1'
+  , inline = 'Short Condition1'
+  , group = 'Short Conditions')
+
+short_condition1_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Short Condition1'
+  , group = 'Short Conditions')
+
+short_condition1_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Short Condition1'
+  , group = 'Short Conditions')
+
+short_condition1_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Short Condition1'
+  , group = 'Short Conditions')
+
+// }
+
+// short  Condition2 {
+short_condition2_check = input.bool(false,  title = 'Condition2'
+  , inline = 'Short Condition2'
+  , group = 'Short Conditions')
+
+short_condition2_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Short Condition2'
+  , group = 'Short Conditions')
+
+short_condition2_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Short Condition2'
+  , group = 'Short Conditions')
+
+short_condition2_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Short Condition2'
+  , group = 'Short Conditions')
+
+// }
+
+// Short Condition3 {
+short_condition3_check = input.bool(false,  title = 'Condition3'
+  , inline = 'Short Condition3'
+  , group = 'Short Conditions')
+
+short_condition3_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Short Condition3'
+  , group = 'Short Conditions')
+
+short_condition3_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Short Condition3'
+  , group = 'Short Conditions')
+
+short_condition3_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Short Condition3'
+  , group = 'Short Conditions')
+
+// }
+
+// Short Condition4 {
+short_condition4_check = input.bool(false,  title = 'Condition4'
+  , inline = 'Short Condition4'
+  , group = 'Short Conditions')
+
+short_condition4_source = input.source(close, title = ''
+  , inline = 'Short Condition4'
+  , group = 'Short Conditions')
+
+short_condition4_judge = input.string(EQUAL, title = ''
+  , options = [GREATER_THAN, LOWER_THAN, EQUAL, CROSSING_OVER, CROSSING_UNDER, CROSSING]
+  , inline = 'Short Condition4'
+  , group = 'Short Conditions')
+
+short_condition4_source2 = input.source(open, title = ''
+  , inline = 'Short Condition4'
+  , group = 'Short Conditions')
+
+short_condition4_step = input.int(1, title = 'Condition4 Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Short Condition4'
+  , group = 'Short Conditions')
+
+// }
+
+// Short Condition5 {
+short_condition5_check = input.bool(false,  title = 'Condition5'
+  , inline = 'Short Condition5'
+  , group = 'Short Conditions')
+
+short_condition5_source = input.source(close, title = ''
+  , inline = 'Short Condition5'
+  , group = 'Short Conditions')
+
+short_condition5_judge = input.string(EQUAL, title = ''
+  , options = [GREATER_THAN, LOWER_THAN, EQUAL, CROSSING_OVER, CROSSING_UNDER, CROSSING]
+  , inline = 'Short Condition5'
+  , group = 'Short Conditions')
+
+short_condition5_source2 =  input.int(1, title = ''
+  , inline = 'Short Condition5'
+  , group = 'Short Conditions')
+
+short_condition5_step = input.int(1, title = 'Condition5 Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Short Condition5'
+  , group = 'Short Conditions')
+
+// }
+
+//----------------------------------------}
+// Exit Long Conditions  平多條件
+//----------------------------------------{
+
+// Exit Long Condition1 {
+exit_long_condition1_check = input.bool(false,  title = 'Exit Long 1'
+  , inline = 'Exit_Long_Condition1'
+  , group = 'Exit Long Conditions')
+
+exit_long_condition1_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Exit_Long_Condition1'
+  , group = 'Exit Long Conditions')
+
+exit_long_condition1_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Exit_Long_Condition1'
+  , group = 'Exit Long Conditions')
+
+exit_long_condition1_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Exit_Long_Condition1'
+  , group = 'Exit Long Conditions')
+
+// }
+
+// Exit Long Condition2 {
+exit_long_condition2_check = input.bool(false,  title = 'Exit Long 2'
+  , inline = 'Exit_Long_Condition2'
+  , group = 'Exit Long Conditions')
+
+exit_long_condition2_source = input.source(close, title = ''
+  , inline = 'Exit_Long_Condition2'
+  , group = 'Exit Long Conditions')
+
+exit_long_condition2_judge = input.string(EQUAL, title = ''
+  , options = [GREATER_THAN, LOWER_THAN, EQUAL, CROSSING_OVER, CROSSING_UNDER, CROSSING]
+  , inline = 'Exit_Long_Condition2'
+  , group = 'Exit Long Conditions')
+
+exit_long_condition2_source2 = input.source(close, title = ''
+  , inline = 'Exit_Long_Condition2'
+  , group = 'Exit Long Conditions')
+
+exit_long_condition2_step = input.int(1, title = 'Exit Long 2 Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Exit_Long_Condition2'
+  , group = 'Exit Long Conditions')
+
+// }
+
+//----------------------------------------}
+// Exit Short Conditions 平空條件
+//----------------------------------------{
+
+
+// Exit Short Condition1 {
+exit_short_condition1_check = input.bool(false,  title = 'Exit Short 1'
+  , inline = 'Exit_Short_Condition1'
+  , group = 'Exit Short Conditions')
+
+exit_short_condition1_trend = input.string(BULLISH, title = ''
+  , options = [BULLISH, BEARISH]
+  , inline = 'Exit_Short_Condition1'
+  , group = 'Exit Short Conditions')
+
+exit_short_condition1_structures = input.string(BMS, title = ''
+  , options = [SMS_BMS, SMS, BMS, MITIGATED_OB, WITHIN_OB, ENTERED_OB, NEW_IMBALANCE, ENTERED_IMBALANCE, WITHIN_IMBALANCE, MITIGATED_IMBALANCE]
+  , inline = 'Exit_Short_Condition1'
+  , group = 'Exit Short Conditions')
+
+exit_short_condition1_step = input.int(1, title = 'Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Exit_Short_Condition1'
+  , group = 'Exit Short Conditions')
+
+// }
+
+// Exit Short Condition2 {
+exit_short_condition2_check = input.bool(false,  title = 'Exit Short 2'
+  , inline = 'Exit_Short_Condition2'
+  , group = 'Exit Short Conditions')
+
+exit_short_condition2_source = input.source(close, title = ''
+  , inline = 'Exit_Short_Condition2'
+  , group = 'Exit Short Conditions')
+
+exit_short_condition2_judge = input.string(EQUAL, title = ''
+  , options = [GREATER_THAN, LOWER_THAN, EQUAL, CROSSING_OVER, CROSSING_UNDER, CROSSING]
+  , inline = 'Exit_Short_Condition2'
+  , group = 'Exit Short Conditions')
+
+exit_short_condition2_source2 = input.source(close, title = ''
+  , inline = 'Exit_Short_Condition2'
+  , group = 'Exit Short Conditions')
+
+exit_short_condition2_step = input.int(1, title = 'Exit Short 2 Step'
+  , options = [1, 2, 3, 4, 5, 6]
+  , inline = 'Exit_Short_Condition2'
+  , group = 'Exit Short Conditions')
+
+// }
+
+//----------------------------------------}
+// FIXED TPS & SLS 止盈止損條件
+//----------------------------------------{
+
+// Long TP
+long_tp_check = input.bool(false,  title = 'Long TP'
+  , inline = 'Long TP'
+  , group = 'FIXED TPS & SLS ')
+
+long_tp_action = input.string(ATR, title = ''
+  , options = [PRICE, CURRENCY, PERCENT, ATR]
+  , inline = 'Long TP'
+  , group = 'FIXED TPS & SLS ')
+
+long_tp_range = input.float(0, title = ''
+  , inline = 'Long TP'
+  , group = 'FIXED TPS & SLS ')
+
+// Long SL
+long_sl_check = input.bool(false,  title = 'Long SL'
+  , inline = 'Long SL'
+  , group = 'FIXED TPS & SLS ')
+
+long_sl_action = input.string(ATR, title = ''
+  , options = [PRICE, CURRENCY, PERCENT, ATR]
+  , inline = 'Long SL'
+  , group = 'FIXED TPS & SLS ')
+
+long_sl_range = input.float(0, title = ''
+  , inline = 'Long SL'
+  , group = 'FIXED TPS & SLS ')
+
+
+// Short TP
+short_tp_check = input.bool(false,  title = 'Short TP'
+  , inline = 'Short TP'
+  , group = 'FIXED TPS & SLS ')
+
+short_tp_action = input.string(ATR, title = ''
+  , options = [PRICE, CURRENCY, PERCENT, ATR]
+  , inline = 'Short TP'
+  , group = 'FIXED TPS & SLS ')
+
+short_tp_range = input.float(0, title = ''
+  , inline = 'Short TP'
+  , group = 'FIXED TPS & SLS ')
+
+// Short SL
+short_sl_check = input.bool(false,  title = 'Short SL'
+  , inline = 'Short SL'
+  , group = 'FIXED TPS & SLS ')
+
+short_sl_action = input.string(ATR, title = ''
+  , options = [PRICE, CURRENCY, PERCENT, ATR]
+  , inline = 'Short SL'
+  , group = 'FIXED TPS & SLS ')
+
+short_sl_range = input.float(0, title = ''
+  , inline = 'Short SL'
+  , group = 'FIXED TPS & SLS ')
+
+// Plot
+plot_profit_check = input.bool(false,  title = 'Plot Take Profit'
+  , inline = 'Plot Take Profit'
+  , group = 'FIXED TPS & SLS ')
+
+plot_profit_color = input.color(color.blue,  title = ''
+  , inline = 'Plot Take Profit'
+  , group = 'FIXED TPS & SLS ')
+
+plot_stop_check = input.bool(false,  title = 'Plot Stop Profit'
+  , inline = 'Plot Stop Profit'
+  , group = 'FIXED TPS & SLS ')
+
+plot_stop_color = input.color(color.red,  title = ''
+  , inline = 'Plot Stop Profit'
+  , group = 'FIXED TPS & SLS ')
+
+//----------------------------------------}
+
+//-----------------------------------------------------------------------------}
+ 
+//-----------------------------------------------------------------------------{
+// Functions
+//-----------------------------------------------------------------------------{
+// Global Variables
+//----------------------------------------{
+
+cmean_range = request.security(syminfo.tickerid, str.tostring(ms_tf), ta.cum(high - low) / bar_index) 
+
+//Get ohlc values function
+get_ms_ohlc()=> [high, low, time, high[ms_length], low[ms_length], ta.highest(ms_length), ta.lowest(ms_length)]
+get_ib_ohlc()=> [close[1], open[1], high, low, close, high[2], low[2], time]
+get_ob_ohlc()=> [high, low, time, ta.atr(200), high[ob_length], low[ob_length], ta.highest(ob_length), ta.lowest(ob_length)]
+
+// Get Market_Structure ohlc
+[ms_src_h, ms_src_l, ms_time, ms_src_h_len, ms_src_l_len, ms_highest, ms_lowest] = request.security(syminfo.tickerid, str.tostring(ms_tf), get_ms_ohlc())
+// Get Imbalances ohlc
+[ib_src_c1, ib_src_o1, ib_src_h, ib_src_l, ib_src_c, ib_src_h2, ib_src_l2, ib_time] = request.security(syminfo.tickerid, str.tostring(ib_tf), get_ib_ohlc())
+// Get Order Block ohlc`
+[ob_src_h, ob_src_l, ob_time, ob_atr, ob_src_h_len, ob_src_l_len, ob_highest, ob_lowest] = request.security(syminfo.tickerid, str.tostring(ob_tf), get_ob_ohlc())
+
+daily_high = request.security(syminfo.tickerid, 'D', high)
+daily_low = request.security(syminfo.tickerid, 'D', low)
+
+// OB Need Arrays
+var ob_tf_h = array.new_float()
+var ob_tf_l = array.new_float()
+var ob_tf_atr = array.new_float()
+var ob_tf_time = array.new_int()
+
+if timeframe.change(str.tostring(ob_tf))
+    array.unshift(ob_tf_h, ob_src_h)
+    array.unshift(ob_tf_l, ob_src_l)
+    array.unshift(ob_tf_atr, ob_atr)
+    array.unshift(ob_tf_time, ob_time)
+
+//Display Structure function
+display_Structure(x, y, txt, css, dashed, down, lbl_size)=>
+    structure_line = line.new(x, y, time, y
+      , color = css
+      , xloc = xloc.bar_time
+      , style = dashed ? line.style_dashed : line.style_solid)
+
+    structure_lbl = label.new(int(math.avg(x, time)), y, txt
+      , color = TRANSP_CSS
+      , textcolor = css
+      , xloc = xloc.bar_time
+      , style = down ? label.style_label_down : label.style_label_up
+      , size = lbl_size)
+
+//Swings detection/measurements 波動檢測/測量
+swings_ms()=>  
+    var os = 0
+    if timeframe.change(str.tostring(ms_tf))
+        os := ms_src_h_len > ms_highest ? 0 : ms_src_l_len < ms_lowest ? 1 : os[1]
+        top = os == 0 and os[1] != 0 ? ms_src_h_len : 0
+        btm = os == 1 and os[1] != 1 ? ms_src_l_len : 0
+        [top, btm]
+
+    else 
+        top = 0
+        btm = 0
+        [top, btm]
+
+swings_ob()=>  
+    var os = 0
+    if timeframe.change(str.tostring(ob_tf))     
+        os := ob_src_h_len > ob_highest ? 0 : ob_src_l_len < ob_lowest ? 1 : os[1]
+        o_top = os == 0 and os[1] != 0 ? ob_src_h_len : 0
+        o_btm = os == 1 and os[1] != 1 ? ob_src_l_len : 0
+        [o_top, o_btm]
+
+    else 
+        o_top = 0
+        o_btm = 0
+        [o_top, o_btm]
+
+ob_coord(use_max, loc, target_top, target_btm, target_left, target_type)=>
+    min = 99999999.
+    max = 0.
+    idx = 1
+
+    if use_max
+        for i = 1 to math.min((int((time - loc) / (ob_tf*60000))) -1, ob_tf_h.size()-1)
+            if (array.get(ob_tf_h, i) - array.get(ob_tf_l, i)) < array.get(ob_tf_atr, i) * 2           
+                max := math.max(array.get(ob_tf_h, i), max)
+                min := max == array.get(ob_tf_h, i) ? array.get(ob_tf_l, i) : min
+                idx := max == array.get(ob_tf_h, i) ? i : idx        
+    else
+        for i = 1 to math.min((int((time - loc) / (ob_tf*60000))) -1, ob_tf_h.size()-1)
+            if (array.get(ob_tf_h, i) - array.get(ob_tf_l, i)) < array.get(ob_tf_atr, i) * 2                     
+                min := math.min(array.get(ob_tf_l, i), min)
+                max := min == array.get(ob_tf_l, i) ? array.get(ob_tf_h, i) : max
+                idx := min == array.get(ob_tf_l, i) ? i : idx        
+
+    array.unshift(target_top, max)
+    array.unshift(target_btm, min)
+    array.unshift(target_left, array.get(ob_tf_time, idx))         
+    array.unshift(target_type, use_max ? -1 : 1)
+
+//Set order blocks
+display_ob(boxes, target_top, target_btm, target_left, target_type, show_last, size)=>
+
+    for i = 0 to math.min(show_last-1, size-1)
+        get_box = array.get(boxes, i)
+        box.set_left(get_box, array.get(target_left, i))
+        box.set_top(get_box, array.get(target_top, i))
+        box.set_bottom(get_box, array.get(target_btm, i))        
+        box.set_extend(get_box, extend.right)
+
+        color css = array.get(target_type, i) == 1 ? color.new(#3179f5, 80) : color.new(#f77c80, 80)      
+        box.set_border_color(get_box, css)
+        box.set_bgcolor(get_box, css)
+
+var trend = 0, var ob_trend = 0
+
+var top_y = 0., var top_x = 0
+var btm_y = 0., var btm_x = 0
+
+var trail_up = ms_src_h, var trail_dn = ms_src_l
+var trail_up_x = 0,  var trail_dn_x = 0
+
+var top_cross = true,  var btm_cross = true
+var txt_top = '',  var txt_btm = ''
+
+var ob_top_y = 0., var ob_top_x = 0
+var ob_btm_y = 0., var ob_btm_x = 0
+
+var ob_trail_up = ob_src_h, var ob_trail_dn = ob_src_l
+var ob_trail_up_x = 0,  var ob_trail_dn_x = 0
+
+var ob_top_cross = true,  var ob_btm_cross = true
+var ob_txt_top = '',  var ob_txt_btm = ''
+
+
+var bullish_fvg_box = array.new_box(0)
+var bearish_fvg_box = array.new_box(0)
+
+
+//Labels size
+var swing_structure_lbl_size = size.tiny 
+
+[top, btm] = swings_ms()
+[o_top, o_btm] = swings_ob()
+
+//Alerts --{
+bull_sms_alert = false 
+bull_bms_alert   = false 
+
+bear_sms_alert = false 
+bear_bms_alert   = false 
+
+bull_osms_alert = false 
+bull_obms_alert   = false 
+
+bear_osms_alert = false 
+bear_obms_alert   = false 
+
+bull_ob_break = false 
+bear_ob_break = false
+
+// }
+
+//----------------------------------------}
+// Mitigation Method
+//----------------------------------------{
+// Mitigation Order Block
+delete_ob() =>
+    switch ob_mitigation_method
+        CLOSE => 
+            a =1 
+        WICK => 
+            a =1 
+        AVERAGE =>          
+            a =1 
+
+// Mitigation Imbalance
+delete_fvg() =>
+    switch ib_mitigation_method
+        CLOSE => 
+            for bx in bullish_fvg_box
+                if close < box.get_bottom(bx)
+                    box.delete(bx)   
+            for bx in bearish_fvg_box
+                if close > box.get_top(bx)
+                    box.delete(bx)
+        WICK =>     
+            for bx in bullish_fvg_box
+                if low < box.get_bottom(bx)
+                    box.delete(bx)   
+                else if na(box.get_bottom(bx))
+                    box.delete(bx)                     
+            for bx in bearish_fvg_box
+                if high > box.get_top(bx)
+                    box.delete(bx)
+                else if na(box.get_top(bx))
+                    box.delete(bx)                       
+        AVERAGE =>     
+            avg = math.avg(low, high)
+            for bx in bullish_fvg_box
+                if avg < box.get_bottom(bx)
+                    box.delete(bx)   
+            for bx in bearish_fvg_box
+                if avg > box.get_top(bx)
+                    box.delete(bx)
+      
+//----------------------------------------}
+// Pivot High
+//----------------------------------------{
+var line extend_top = na
+var line extend_ob_top = na
+
+// Market_Structure {
+if top > 0
+    top_cross := true
+    txt_top := top > top_y ? 'HH' : 'LH'
+
+    if show_swings
+        top_lbl = label.new(ms_time - ms_length * ms_tf * 60000, top, txt_top
+          , color = TRANSP_CSS
+          , xloc = xloc.bar_time          
+          , textcolor = bear_css
+          , style = label.style_label_down
+          , size = swing_structure_lbl_size)  
+
+    //Extend recent top to last bar
+    line.delete(extend_top[1])
+    extend_top := line.new(ms_time - ms_length * ms_tf * 60000, top, ms_time, top, xloc = xloc.bar_time
+      , color = bear_css)
+
+    top_y := top
+    top_x := ms_time - ms_length * ms_tf * 60000
+
+    trail_up := top
+    trail_up_x := ms_time - ms_length * ms_tf * 60000
+
+//Trailing maximum
+trail_up := math.max(ms_src_h, trail_up)
+trail_up_x := trail_up == ms_src_h ? ms_time : trail_up_x
+// }
+
+
+// Order Block{
+if o_top > 0
+    ob_top_cross := true
+    ob_txt_top := o_top > ob_top_y ? 'HH' : 'LH'
+
+    if show_swings_ob
+        top_lbl = label.new(ob_time - ob_length * ob_tf * 60000, o_top, ob_txt_top
+          , color = TRANSP_CSS
+          , xloc = xloc.bar_time          
+          , textcolor = ob_bear_css
+          , style = label.style_label_down
+          , size = swing_structure_lbl_size)  
+
+    //Extend recent top to last bar
+    line.delete(extend_ob_top[1])
+    extend_ob_top := line.new(ob_time - ob_length * ob_tf * 60000, o_top, ob_time, o_top, xloc = xloc.bar_time
+      , color = ob_bear_css)
+
+    ob_top_y := o_top
+    ob_top_x := ob_time - ob_length * ob_tf * 60000
+
+    ob_trail_up := top
+    ob_trail_up_x := ob_time - ob_length * ob_tf * 60000
+
+//Trailing maximum
+ob_trail_up := math.max(ob_src_h, ob_trail_up)
+ob_trail_up_x := ob_trail_up == ob_src_h ? ob_time : ob_trail_up_x
+
+// }
+
+//-----------------------------------------------------------------------------}
+// Pivot Low
+//-----------------------------------------------------------------------------{
+var line extend_btm = na 
+var line extend_ob_btm = na 
+
+// Market_Structure {
+if btm > 0
+    btm_cross := true
+    txt_btm := btm < btm_y ? 'LL' : 'HL'
+
+    if show_swings
+        top_lbl = label.new(ms_time - ms_length * ms_tf * 60000, btm, txt_btm
+          , xloc = xloc.bar_time          
+          , color = TRANSP_CSS
+          , textcolor = bull_css
+          , style = label.style_label_up
+          , size = swing_structure_lbl_size)
+
+    //Extend recent btm to last bar
+    line.delete(extend_btm[1])
+    extend_btm := line.new(ms_time - ms_length * ms_tf * 60000, btm, ms_time, btm, xloc = xloc.bar_time
+      , color = bull_css)
+
+    btm_y := btm
+    btm_x := ms_time - ms_length * ms_tf * 60000
+
+    trail_dn := btm
+    trail_dn_x := ms_time - ms_length * ms_tf * 60000
+
+//Trailing minimum
+trail_dn := math.min(ms_src_l, trail_dn)
+trail_dn_x := trail_dn == ms_src_l ? ms_time : trail_dn_x
+// }
+
+
+
+// Order Block {
+if o_btm > 0
+    ob_btm_cross := true
+    ob_txt_btm := o_btm < ob_btm_y ? 'LL' : 'HL'
+
+    if show_swings_ob
+        top_lbl = label.new(ob_time - ob_length * ob_tf * 60000, o_btm, ob_txt_btm
+          , xloc = xloc.bar_time          
+          , color = TRANSP_CSS
+          , textcolor = ob_bull_css
+          , style = label.style_label_up
+          , size = swing_structure_lbl_size)
+
+    //Extend recent o_btm to last bar
+    line.delete(extend_ob_btm[1])
+    extend_ob_btm := line.new(ob_time - ob_length * ob_tf * 60000, o_btm, ob_time, o_btm, xloc = xloc.bar_time
+      , color = ob_bull_css)
+
+    ob_btm_y := o_btm
+    ob_btm_x := ob_time - ob_length * ob_tf * 60000
+
+    ob_trail_dn := o_btm
+    ob_trail_dn_x := ob_time - ob_length * ob_tf * 60000
+
+//Trailing minimum
+ob_trail_dn := math.min(ob_src_l, trail_dn)
+ob_trail_dn_x := ob_trail_dn == ob_src_l ? ob_time : ob_trail_dn_x
+// }
+
+
+//-----------------------------------------------------------------------------}
+// Order Blocks Arrays
+//-----------------------------------------------------------------------------{
+var ob_top = array.new_float(0)
+var ob_btm = array.new_float(0)
+var ob_left = array.new_int(0)
+var ob_type = array.new_int(0)
+//-----------------------------------------------------------------------------}
+// Pivot High BMS/SMS
+//-----------------------------------------------------------------------------{
+//Filtering
+var bull_concordant = true
+
+// if ifilter_confluence
+//     bull_concordant := high - math.max(close, open) > math.min(close, open - low)
+
+//Detect bullish Structure
+// Market_Structure
+if ta.crossover(close, top_y) and top_cross
+    bool sms = na
+    
+    if trend < 0
+        sms := true
+        bull_sms_alert := true
+    else 
+        bull_bms_alert := true
+
+    txt = sms ? 'SMS' : 'BMS'
+    
+    display_Structure(top_x, top_y, txt, bull_css, false, true, swing_structure_lbl_size)
+
+    top_cross := false
+    trend := 1
+
+// Order Block
+if ta.crossover(close, ob_top_y) and ob_top_cross
+    bool sms = na
+    
+    if ob_trend < 0
+        sms := true
+        bull_osms_alert := true
+    else 
+        bull_obms_alert := true
+
+    txt = sms ? 'SMS' : 'BMS'
+    
+    display_Structure(ob_top_x, ob_top_y, txt, ob_bull_css, false, true, swing_structure_lbl_size)
+    
+    // if show_ob
+    if ( ob_tf_h.size() > ob_length)      
+        ob_coord(false, ob_top_x, ob_top, ob_btm, ob_left, ob_type)
+
+    ob_top_cross := false
+    ob_trend := 1  
+
+//----------------------------------------}
+// Pivot Low BMS/SMS
+//----------------------------------------{
+var bear_concordant = true
+
+// if ifilter_confluence
+//     bear_concordant := high - math.max(close, open) < math.min(close, open - low)
+
+//Detect bearish Structure
+// Market_Structure
+if ta.crossunder(close, btm_y) and btm_cross
+    bool sms = na
+    
+    if trend > 0
+        sms := true
+        bear_sms_alert := true
+    else 
+        bear_bms_alert := true
+
+    txt = sms ? 'SMS' : 'BMS'
+
+    display_Structure(btm_x, btm_y, txt, bear_css, false, false, swing_structure_lbl_size)
+
+    btm_cross := false
+    trend := -1
+
+// Order Block
+if ta.crossunder(close, ob_btm_y) and ob_btm_cross
+    bool sms = na
+    
+    if ob_trend > 0
+        sms := true
+        bear_osms_alert := true
+    else 
+        bear_obms_alert := true
+
+    txt = sms ? 'SMS' : 'BMS'
+
+    display_Structure(ob_btm_x, ob_btm_y, txt, ob_bear_css, false, false, swing_structure_lbl_size)
+
+    //Order Block
+    if (ob_tf_h.size() > ob_length)
+        ob_coord(true, ob_btm_x, ob_top, ob_btm, ob_left, ob_type)
+
+    ob_btm_cross := false
+    ob_trend := -1
+
+
+//----------------------------------------}
+// Order Blocks
+//----------------------------------------{
+//Set order blocks
+var ob_boxes = array.new_box(0)
+
+// Delete internal order blocks box coordinates if top/bottom is broken
+for element in ob_type
+    index = array.indexof(ob_type, element)
+
+    if close < array.get(ob_btm, index) and element == 1
+        array.remove(ob_top, index) 
+        array.remove(ob_btm, index) 
+        array.remove(ob_left, index) 
+        array.remove(ob_type, index)
+        bull_ob_break := true
+
+    else if close > array.get(ob_top, index) and element == -1
+        array.remove(ob_top, index) 
+        array.remove(ob_btm, index)
+        array.remove(ob_left, index) 
+        array.remove(ob_type, index)
+        bear_ob_break := true
+
+if barstate.isfirst
+    for i = 0 to ob_last-1
+        array.push(ob_boxes, box.new(na,na,na,na, xloc = xloc.bar_time))
+// if ob_size > 0
+//     if barstate.islast
+if array.size(ob_type) > 0
+    display_ob(ob_boxes, ob_top, ob_btm, ob_left, ob_type, ob_last, array.size(ob_type))
+
+//----------------------------------------}
+// Fair Value Gaps
+//----------------------------------------{
+
+var fvg_extend = 20 
+float bullish_fvg_avg = na
+float bearish_fvg_avg = na
+
+bullish_fvg_cnd = false
+bearish_fvg_cnd = false
+
+if ib_method == 'FVG' 
+    delta_per = (ib_src_c1 - ib_src_o1) / ib_src_o1 * 100
+    change_tf = timeframe.change(str.tostring(ib_tf))
+
+    //FVG Conditions
+    bullish_fvg_cnd := ib_src_l > ib_src_h2
+      and ib_src_c1 > ib_src_h2 
+      and delta_per > ib_threshold
+      and change_tf
+
+    bearish_fvg_cnd := ib_src_h < ib_src_l2 
+      and ib_src_c1 < ib_src_l2 
+      and -delta_per > ib_threshold
+      and change_tf
+
+    //FVG Areas
+    if bullish_fvg_cnd
+        array.unshift(bullish_fvg_box, box.new(ib_time - ib_tf * 60000, ib_src_l, ib_time + ib_tf * 60000 * fvg_extend, ib_src_h2, xloc = xloc.bar_time
+          , border_color = bull_fvg_css
+          , bgcolor = bull_fvg_css))
+    
+    if bearish_fvg_cnd
+        array.unshift(bearish_fvg_box, box.new(ib_time - ib_tf * 60000, ib_src_h, ib_time + ib_tf * 60000 * fvg_extend, ib_src_l2, xloc = xloc.bar_time
+          , border_color = bear_fvg_css
+          , bgcolor = bear_fvg_css))
+//----------------------------------------}
+
+//-----------------------------------------------------------------------------}
+
+
+
+
+
+//-----------------------------------------------------------------------------{
+// Strategy
+//-----------------------------------------------------------------------------{
+// Global Variables
+//----------------------------------------{
+var long_step1 = false
+var long_step2 = false
+var long_step3 = false
+var long_step4 = false
+var long_step5 = false
+var long_step6 = false
+
+var short_step1 = false
+var short_step2 = false
+var short_step3 = false
+var short_step4 = false
+var short_step5 = false
+var short_step6 = false
+
+var exit_long_step1 = false
+var exit_long_step2 = false
+
+var exit_short_step1 = false
+var exit_short_step2 = false
+
+var orderCase = 'No_Position'
+var structure_type = ''
+var key_fvg_top = 0.
+var key_fvg_btm = 0.
+//----------------------------------------}
+// General Functions
+//----------------------------------------{
+
+// Order Blocks {
+// 找出最接近的看漲OB
+nearest_bullish_ob()=>
+    // nearest_bullish_ob_top := 0
+    nearest_top = 0.
+    nearest_btm = 0.
+    for element in ob_type
+        index = array.indexof(ob_type, element)
+        if element == 1
+            nearest_top := array.get(ob_top, index) 
+            nearest_btm := array.get(ob_btm, index) 
+        if close > array.get(ob_btm, index) and element == 1
+            break
+    [nearest_top, nearest_btm]
+
+nearest_bearish_ob()=>
+    nearest_top = 0.
+    nearest_btm = 0.
+
+    for element in ob_type
+        index = array.indexof(ob_type, element)
+        if element == 0
+            nearest_top := array.get(ob_top, index) 
+            nearest_btm := array.get(ob_btm, index) 
+        if close < array.get(ob_btm, index) and element == 0
+            break
+    [nearest_top, nearest_btm]
+//}
+
+// Internal FVG {
+// 找出最接近的看漲FVG
+nearest_bullish_fvg(bullish_fvg_box)=>
+    box find_bx = na
+    for bx in bullish_fvg_box
+        find_bx := bx
+        if close > bx.get_bottom()
+            break
+    find_bx
+
+// 找出最接近的看空FVG
+nearest_bearish_fvg(bearish_fvg_box)=>
+    box find_bx = na
+    i = 1
+    for bx in bearish_fvg_box
+        // if na(find_bx.get_top())
+        //     break
+        // else           
+        find_bx := bx
+        log.info(str.format("fvg i:{0} top:{1} btm:{2} close:{3}", i, find_bx.get_top(), find_bx.get_bottom() ))
+        i+=1
+        if close < bx.get_top()
+            break
+    find_bx
+// }
+
+
+
+// Long Conditions  做多條件
+//----------------------------------------{
+LongCondition_1to3(long_condition_structures) =>
+    bool conform = false
+
+    switch long_condition_structures
+        SMS_BMS =>
+          a = 1+1
+        SMS =>
+          a = 1+1
+        BMS =>
+          a = 1+1
+        MITIGATED_OB =>
+          a = 1+1
+        WITHIN_OB =>
+          a  =1+1
+        ENTERED_OB =>
+          a = 1+1
+        NEW_IMBALANCE =>
+          a = 1+1
+        ENTERED_IMBALANCE =>
+          a = 1+1
+        WITHIN_IMBALANCE =>
+          a = 1+1
+        MITIGATED_IMBALANCE =>
+          a = 1+1
+
+    conform
+
+Check_Long_Step(step) =>
+    bool isConform = false
+    if long_condition1_check and long_condition1_step == step
+        isConform := true
+    else if long_condition2_check and long_condition2_step == step
+        isConform := true
+    else if long_condition3_check and long_condition3_step == step
+        isConform := true        
+    else if long_condition4_check and long_condition4_step == step
+        isConform := true            
+    else if long_condition5_check and long_condition5_step == step
+        isConform := true               
+    isConform
+
+Long_Step1() =>
+    bool isConform = true 
+
+    if (long_condition1_check and long_condition1_step == 1 and isConform)
+        isConform := LongCondition_1to3(long_condition1_structures)
+    if(long_condition2_check and long_condition2_step == 1 and isConform)
+        isConform := LongCondition_1to3(long_condition2_structures)
+    if(long_condition3_check and long_condition3_step == 1 and isConform)
+        isConform := LongCondition_1to3(long_condition3_structures)        
+    isConform
+
+//-----------------------------------------------------------------------------}
+
+
+//----------------------------------------}
+// Exit Conditions 
+//----------------------------------------{
+if strategy.position_size > 0
+    switch orderCase
+        "Case1" => 
+            bearish_bx = array.get(bearish_fvg_box, array.indexof(bearish_fvg_box, nearest_bearish_fvg(bearish_fvg_box)))   
+            bullish_bx = array.get(bullish_fvg_box, array.indexof(bullish_fvg_box, nearest_bullish_fvg(bullish_fvg_box)))
+            log.info(str.format("Case1 key_fvg_top: {0} key_fvg_btm {1}",key_fvg_top, key_fvg_btm))
+            log.info(str.format("Case1 bearish_bx_top: {0} bearish_bx_btm {1}", bearish_bx.get_top(), bearish_bx.get_bottom()))
+            log.info(str.format("Case1 bullish_bx_top: {0} bullish_bx_btm {1}", bullish_bx.get_top(), bullish_bx.get_bottom()))
+            debugString = str.format("FVG high: {0} | FVG low: {1} | SMS top_x :{2} top_y :{3}", bearish_bx.get_top(), bearish_bx.get_bottom(), top_x, top_y)
+            //if close < key_fvg_btm and high > key_fvg_btm
+            if close  > key_fvg_btm
+
+                strategy.close("bullish_sms_long", qty_percent = 100, comment = "【Case1平倉】")
+           
+
+//----------------------------------------}
+// Entry Conditions
+//----------------------------------------{
+structure_type := bull_bms_alert == true ? "bull_bms_alert" : bull_sms_alert == true ? "bull_sms_alert" : bear_bms_alert == true ? "bear_bms_alert" : bear_sms_alert == true ? "bear_sms_alert" : structure_type
+
+
+if strategy.position_size == 0 and inTradeWindow  
+    log.warning("position_size")
+    switch structure_type
+        "bull_sms_alert" =>
+            log.warning("bull_sms_alert")
+            [nearest_bullish_ob_top, nearest_bullish_ob_btm] = nearest_bullish_ob()
+            if nearest_bullish_ob_top > 0
+                // 取得最接近之OB
+                debugString = str.format("OB high: {0} | OB low: {1} | SMS top_x :{2} top_y :{3}", nearest_bullish_ob_top, nearest_bullish_ob_btm, top_x, top_y)
+
+                if close > nearest_bullish_ob_top and low < nearest_bullish_ob_top
+                    orderCase := "Case1"                    
+                    label.new(bar_index, high, debugString, color = color.black, textcolor = color.white, textalign = text.align_left)
+                    // TODO找出最近的止損點
+                    strategy.entry("bullish_sms_long", strategy.long) //, stop = bullish_bx.get_bottom())
+                    bearish_bx = array.get(bearish_fvg_box, array.indexof(bearish_fvg_box, nearest_bearish_fvg(bearish_fvg_box)))
+                    key_fvg_btm := na(bearish_bx.get_bottom()) ? daily_high : bearish_bx.get_bottom()
+                    key_fvg_top := na(bearish_bx.get_top()) ? daily_high : bearish_bx.get_bottom()
+                    
+                    log.warning("買入")
+                    log.warning(str.tostring(close))
+
+
+    // if(Check_Long_Step(1))
+    //     conform_Step1 = Long_Step1()
+    //     //log.warning("Long_Step1")
+
+plotchar(key_fvg_btm, "key_fvg_btm", "", color=color.new(color.white, 100))
+plotchar(key_fvg_top, "key_fvg_top", "", color=color.new(color.white, 100))
+// Step 2 
+
+
+//----------------------------------------}
+// Delete Imbalance
+//----------------------------------------{
+switch ib_method
+    FVG => 
+        delete_fvg()
+    'Other' => 
+        log.warning('ib_method Other')
+
+//----------------------------------------}
+
+//-----------------------------------------------------------------------------}

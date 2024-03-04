@@ -1,0 +1,9 @@
+{
+    "markdown-preview-enhanced.mermaidTheme": "dark",
+    "markdown-preview-enhanced.revealjsTheme": "black.css",
+    "markdown-preview-enhanced.codeBlockTheme": "auto.css",
+    "markdown-preview-enhanced.previewTheme": "github-dark.css",
+    "python.analysis.extraPaths": [
+        "./bybit/AutoSystem/main"
+    ]
+}

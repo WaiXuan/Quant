@@ -1,0 +1,37 @@
+flowchart TD
+    Strat(("開始")) --> |"IcpNo
+                        FileDate
+                        isDownload
+                        isDeleteDeclareData"|Main("Main")
+    Main --> IsDownload{"是否至SFTP下載檔案"}
+    IsDownload --> |"Y"| GetSFTPInfo("取得SFTP連線資訊
+                                        usp_GetIcpFTPData")
+        GetSFTPInfo --> FTPResult{"是否取得成功"}    
+            FTPResult --> |"N"| Send_DBErrorMail("寄錯誤信")
+            FTPResult --> |"Y"| DownloadFile("下載檔案")
+        DownloadFile --> DownloadResult{"是否下載成功"}
+            DownloadResult --> |"N"| InsertDownLoadFailBatchLog("紀錄下載失敗Log")
+            InsertDownLoadFailBatchLog --> Send_DBErrorMail("寄錯誤信")
+            DownloadResult --> |"Y"| InsertDownLoadSuccessBatchLog("紀錄下載成功Log")
+            InsertDownLoadSuccessBatchLog --> IsDeleteDeclareData{"是否刪除資料"}
+    IsDownload --> |"N"| IsDeleteDeclareData{"是否刪除資料"}
+    IsDeleteDeclareData --> |"Y"| DeleteDeclareData("刪除資料
+                                                    Batch.usp_DeleteDeclareData")
+            DeleteDeclareData --> DeleteResult{"是否刪除成功"}
+                DeleteResult --> |"N"| Send_DBErrorMail("寄錯誤信")
+                DeleteResult --> |"Y"| FileReadStart("匯入外匯申報明細檔")
+    IsDeleteDeclareData --> |"N"| FileReadStart
+    subgraph 匯入外匯申報明細檔
+        FileReadStart --> CheckAmount{"判斷金額是否大於0"}
+        CheckAmount --> |"N"| InsertRefundDeclareData("資料新增至RecordRefundDeclareData")
+        CheckAmount --> |"Y"| InsertDeclareData("資料新增至RefordDeclareData")
+        InsertRefundDeclareData --> FileReadEnd("匯入結束")
+        InsertDeclareData --> FileReadEnd("匯入結束")
+    end
+    FileReadEnd --> FileReadResult{"是否匯入成功"}
+        FileReadResult --> |"N"| InsertReadFailBatchLog("匯入失敗Log")
+        InsertReadFailBatchLog --> Send_DBErrorMail("寄錯誤信")
+        FileReadResult --> |"Y"| InsertReadSuccessBatchLog("匯入成功Log")
+        InsertReadSuccessBatchLog --> Send_DBSuccessMail("寄成功信")
+    Send_DBSuccessMail --> End(("結束"))
+    Send_DBErrorMail --> End(("結束"))

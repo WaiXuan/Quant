@@ -1,0 +1,56 @@
+/*backtest
+start: 2022-04-22 00:00:00
+end: 2022-05-21 23:59:00
+period: 30m
+basePeriod: 15m
+exchanges: [{"eid":"Futures_Binance","currency":"BTC_USDT"}]
+*/
+
+//@version=4
+study("Order Block Finder", overlay = true)       
+tip1 = "此指標有助於識別機構性的訂單區塊（OB）。OB通常預示著強勢行情的開始。有很高的機會OB價位將來會再次到達，這些價位是放置限價訂單的有趣選擇。牛市OB是連續的上漲蠟燭之前的最後一根下跌蠟燭。熊市OB是連續的下跌蠟燭之前的最後一根上漲蠟燭。"
+tip2 = "!實驗性功能!\n從不同時間框架中查找訂單區塊。價格通道是準確的，但箭頭位置不準確。在選擇高於圖表的時間框架時最有用。"
+tip3 = "識別訂單區塊所需的連續蠟燭數"
+tip4 = "從潛在OB的收盤價到連續蠟燭的第一根的收盤價之間的絕對百分比變動"
+dummy = input(true, "懸停在（！）上以獲得說明", tooltip = tip1)
+colors = input("LIGHT", "顏色主題", options=["DARK", "LIGHT"])
+//res = input("","Order Block Timeframe",input.resolution,tooltip=tip2)
+periods = input(7, "識別OB的相關期數", tooltip=tip3) // 識別訂單區塊所需的連續蠟燭數
+threshold = input(0.0, "有效OB的最低百分比變動", step = 0.1, tooltip=tip4) // 需要的最小％變動（從潛在OB的收盤價到最後一個連續蠟燭的收盤價，以識別訂單區塊）
+bull_channels = input(2, "顯示多頭通道數") // 通道數
+bear_channels = input(2, "顯示空頭通道數") // 通道數
+
+//數據提取
+res = ""
+[copen, chigh, clow, cclose] = security(syminfo.tickerid, res, [open, high, low, close], barmerge.gaps_on, barmerge.lookahead_off)
+
+ob_period = periods + 1 // 識別相關訂單區塊蠟燭的位置
+absmove = ((abs(cclose[ob_period] - cclose[1])) / cclose[ob_period]) * 100 // 計算從潛在OB到連續蠟燭的最後一根的絕對百分比變動
+relmove = absmove >= threshold // 通過比較絕對變動與閾值來識別“相關變動”
+
+// 顏色主題
+bullcolor = colors == "DARK" ? color.white : color.green
+bearcolor = colors == "DARK" ? color.blue : color.red
+
+// 識別多頭訂單區塊
+bullishOB = cclose[ob_period] < copen[ob_period] // 確定潛在的多頭OB蠟燭（紅色蠟燭）
+
+int upcandles = 0
+for i = 1 to periods
+    upcandles := upcandles + (cclose[i] > copen[i] ? 1 : 0) // 確定連續蠟燭的顏色（必須全部為綠色以識別有效的多頭OB）
+
+OB_bull = bullishOB and (upcandles == (periods)) and relmove // 識別邏輯（紅色OB蠟燭和後續綠色蠟燭）
+OB_bull_chigh = OB_bull ? chigh[ob_period] : na // 確定OB的上限（根據輸入選擇開盤價或最高價）
+OB_bull_clow = OB_bull ? clow[ob_period] : na // 確定OB的下限（最低價）
+OB_bull_avg = (OB_bull_chigh + OB_bull_clow) / 2 // 確定OB的中間線
+
+// 識別空頭訂單區塊
+bearishOB = cclose[ob_period] > copen[ob_period] // 確定潛在的空頭OB蠟燭（綠色蠟燭）
+
+int downcandles = 0
+for i = 1 to periods
+    downcandles := downcandles + (cclose[i] < copen[i] ? 1 : 0) // 確定連續蠟燭的顏色（必須全部為紅色以識別有效的空頭OB）
+
+OB_bear = bearishOB and (downcandles == (periods)) and relmove // 識別邏輯（綠色OB蠟燭和後續綠色蠟燭）
+OB_bear_chigh = OB_bear ? chigh[ob_period] : na // 確定OB的上限（最高價）
+OB_bear

@@ -1,0 +1,6 @@
+/bin
+*.cfg
+/lib
+*.pyc
+*.html
+/share

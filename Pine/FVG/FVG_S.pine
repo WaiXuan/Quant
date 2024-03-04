@@ -1,0 +1,860 @@
+// combining CHoCHs with nested Pivot highs and grade sweeps and FVGs
+// 27th March 2023
+// © twingall
+
+//@version=5
+indicator("CHoCHs+Nested Pivots+FVGs+Grade Sweeps",  overlay = true, max_labels_count = 500, max_bars_back = 5000, max_lines_count = 500, max_boxes_count = 500)
+    
+    // •••• User Inputs: CHoCHs ••••
+showChochs = input.bool(true, "• SHOW CHOCHS •", inline ='-2',group ="~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~")
+lb_ch = input.int(1, "CHoCH pivots: look-back", inline ='-1', group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~",tooltip = "This is for the very short 3 bar fractal pivots for finding CHoCHs.\n\nDefault/recommended lookback is 1.\n\nYou can experiment with 2, 3, 4 if you like.\n\nNote that Lookforward for these CHoCH pivots is necessarily fixed at 1")
+lf_ch =1 //input.int(1, 'CHoCH pivots: look-forward', inline ='0', group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", tooltip = "recommend leaving this set to 1")
+showUPchoch = input.bool(true, "UP CHoCH", group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='1')
+upChochCol = input.color(color.blue, "", group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='1')
+upIcon = input.string("🢁", group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='1', options = ["🢁","▲","🡅","⟰","🡁","⮭"])
+upIconSize = input.string(size.normal,"Size", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge],group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='1')
+showDNchoch = input.bool(true, "DOWN CHoCH", group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='2')
+dnChochCol = input.color(color.red, "", group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='2')
+dnIcon = input.string("🢃", group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='2', options = ["🢃","▼","🡇","⟱","🡃","⮯"])
+dnIconSize = input.string(size.normal,"Size", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge],group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='2')
+MultiTFcolorOveride = input.bool(false, "Multi-TF Color Override:",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='3', tooltip = "Overrides the above color choices when on the following chart timeframes:\n\n1m | 5m | 15m | H | 4H | D | W | M")
+_1minCol = input.color(color.lime, "1",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_5minCol = input.color(color.fuchsia, "5",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_15minCol = input.color(color.gray, "15",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_HCol = input.color(color.teal, "H",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_4hrCol = input.color(color.blue, "4H",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_DCol = input.color(color.yellow, "D",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_WCol = input.color(color.red, "W",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_MCol = input.color(color.green, "M",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='4')
+_lineStyleCh = input.string("Dashed", "line", options =["Dashed", "Dotted", "Solid"], group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='5')
+lineWidthCh = input.int (1, "width", minval =1, maxval =5,group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='5')
+barsBackCh = input.int(70, "bars lookback" , minval = 5, step =1,group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='6')
+numActiveChoch = input.int(2, "live CHoCHs", minval = 1,group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='6', tooltip = "this number controls the number of active/open CHoCH lines (either Up or Down); i.e. CHoCH lines that have not yet been met by price\n\nHistorical CHoCH levels that have been hit by price will still print and remain within your lookback period setting")
+shrinkChochOnfill = input.bool(false, "shrink CHoCHs once hit",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='7', tooltip = "When price crosses through a CHoCH; the CHoCH will shrink to it's origin bar\n\nFor real-time reading of price action & to declutter chart, toggle this ON\n\nFor backtesting purposes, better to have this toggled OFF")
+useHTFchochs = input.bool(true, "HTF CHoCHs",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='8', tooltip = "prints the last up ChoCH and last down CHoCH from user selected HTF, on the LTF chart\n\nTable cell in green or red showing if we are above last HTF UP CHoCH or below last HTF DOWN CHoCH")
+HTF = input.timeframe ("D", "input HTF",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='8')
+showChochTable = input.bool(true, "show table(above/below)", group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='8')
+htfUPcol =input.color(color.green, "// UP",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='9')
+htfDNcol =input.color(color.red, "DOWN",group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='9')
+_lineStyleChHTF = input.string("Solid", "line", options =["Solid", "Dashed", "Dotted"], group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='9')
+lineWidthChHTF = input.int (1, "width", minval =1, maxval =5,group = "~~~~~~~~~~~~~~~~~~~~ CHoCHs ~~~~~~~~~~~~~~~~~~~~", inline ='9')
+
+    // •••• User Inputs: Pivot Highs and Lows (ST/MT/LT) ••••
+showPivHighsLows= input.bool(true, "• SHOW PIVOT HIGHS & LOWS •", inline ='-2',group ='~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+barsBack = input.int(2000, "bars lookback" , minval = 5, step =1, group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~',inline ='-1')
+lb1 =input.int(15, 'pivots: lookback/forward', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~',inline ='-1', tooltip = "This is the 'root' pivot number; i.e. the STH/STL pivots, from which all the MTH/MTL & LTH/LTL are based on\n\nlarger number for more significant pivot highs / pivot lows")
+useSpikeyCond = input.bool(true, "Apply 'Spikeyness' filter", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='0')
+atrMult =input.float(1.3, '|| Spikeyness index', minval = 0, step =0.1, group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='0', tooltip = "For catching only the 'spiky' pivot highs/pivot lows\n\nIncreasing this number will filter out smooth/unimpressive pivot high&lows\n\nRepresents local ATR multiple for distance from local Moving average a high or low must be\n\nSetting of 1.5 seems optimal on 15m chart with pivot lookback/lookforward = 15")
+
+lookbackCond = bar_index > last_bar_index - barsBack
+
+showSTHs = input.bool(true, "STH", inline='1', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+txtColSTH = input.color(color.teal, "", inline ='1', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+inputTextStyleSTH = input.string("Ʌ (single)", "Style:", inline='1', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', options = ["Ʌ (single)", "text horizontal", "text vertical" ])
+sizeSTH = input.string(size.normal,"Size", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='1')
+showSTHlines = input.bool(false, "line", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='1')
+showMTHs = input.bool(true, "MTH", inline='3', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+txtColMTH = input.color(color.blue, "", inline ='3', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+inputTextStyleMTH = input.string("text horizontal", "Style:", inline='3', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', options = ["Ʌ (double)" ,"text horizontal", "text vertical"])
+sizeMTH = input.string(size.normal,"Size", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='3')
+showMTHlines = input.bool(false, "line", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='3')
+showLTHs = input.bool(true, "LTH", inline='5', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+txtColLTH = input.color(color.green, "", inline ='5', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+inputTextStyleLTH = input.string("text horizontal", "Style:", inline='5', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', options = ["Ʌ (triple)","text horizontal", "text vertical" ])
+sizeLTH = input.string(size.large,"Size:", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='5')
+showLTHlines = input.bool(false, "line", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='5')
+
+showSTLs = input.bool(true, "STL", inline='2', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+txtColSTL = input.color(color.orange, "", inline ='2', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+inputTextStyleSTL = input.string("V (single)", "Style:", inline='2', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', options = ["V (single)", "text horizontal", "text vertical" ])
+sizeSTL = input.string(size.normal,"Size", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='2')
+showSTLlines = input.bool(false, "line", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='2')
+showMTLs = input.bool(true, "MTL", inline='4', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+txtColMTL = input.color(color.fuchsia, "", inline ='4', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+inputTextStyleMTL = input.string("text horizontal", "Style:", inline='4', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', options = ["V (double)" ,"text horizontal", "text vertical"])
+sizeMTL = input.string(size.normal,"Size", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='4')
+showMTLlines = input.bool(false, "line", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='4')
+showLTLs = input.bool(true, "LTL", inline='6', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+txtColLTL = input.color(color.red, "", inline ='6', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~')
+inputTextStyleLTL = input.string("text horizontal", "Style:", inline='6', group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', options = ["V (triple)","text horizontal", "text vertical" ])
+sizeLTL = input.string(size.large,"Size", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='6')
+showLTLlines = input.bool(false, "line", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline='6')
+
+unit_1 = input.float(0.25, "Label spacer (ATR multiples)",minval = 0, step = 0.25, group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='7', tooltip = "spacer above/below for pivot labels, based on multiples of ATR (long-term average true range)")
+lineStyleInput = input.string("Dotted", "LINES: Style", options =["Dashed", "Dotted", "Solid"], group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='8')
+lineWidth = input.int (1, "line width", minval =1, maxval =5,group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='8')
+showTable = input.bool(true, "Table", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='9' )
+tabPos = input.string(position.top_right, "|| Position:", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='9', options = [ position.top_left, position.top_center, position.top_right, position.middle_left, position.middle_center, position.middle_right, position.bottom_left, position.bottom_center, position.bottom_right])
+tabCol = input.color(color.new(color.blue, 60), "|| Bg Color:", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='9')
+txtCol = input.color(color.purple, "|| txt Color:", group = '~~~~~~~~~~~ pivot highs & lows (ST,MT,LT) ~~~~~~~~~~', inline ='9')
+
+    // •••• User Inputs: Sweep Boxes ••••
+showSweepBoxes = input.bool(true, "•  SHOW SWEEP BOXES •", inline ='0',group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+showSTHboxes =input.bool(true, "STH", inline='1', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+STHbxCol = input.color(color.new(color.blue, 80), "", inline='1', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+showSTLboxes =input.bool(true, "STL", inline='1', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+STLbxCol = input.color(color.new(color.red, 80), "", inline='1', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+unitsST = input.float(5, "|| Sweep grade ($/pips)", inline='1', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~', tooltip = "'Sweep grade' = box height in $ or pips\n\nHeight of box beyond pivot high/low\n\nAuto detects units: USD $ for Indices/Commodities/Crypto; pips for FX\n\nS&P recommended settings = 5$ or 10$\n\nFX recommended settings = 10, 20, 30\n\nBonds recommended settings = 0.125 (4 ticks), 0.25 ( 8 ticks), 0.5 (16 ticks), 1 (32 ticks); where $1 = 32 ticks\n\nBitcoin recommmended settings = 50, 100, 200, 500. 1000\n\nCrypto: choose any number from 0.000001$ (very low unit value crypto coin) to 1000$ (Bitcoin swing trading)\n\nAlerts will be based on this input. Choose =0 if you're just interested in touch/peep of the pivot high or low")
+
+showMTHboxes =input.bool(true, "MTH", inline='2', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+MTHbxCol = input.color(color.new(color.fuchsia, 80), "", inline='2', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+showMTLboxes =input.bool(true, "MTL", inline='2', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+MTLbxCol = input.color(color.new(color.orange, 80), "", inline='2', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+unitsMT = input.float(10, "|| Sweep grade ($/pips)", inline='2', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+
+showLTHboxes =input.bool(true, "LTH", inline='3', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+LTHbxCol = input.color(color.new(color.green, 80), "", inline='3', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+showLTLboxes =input.bool(true, "LTL", inline='3', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+LTLbxCol = input.color(color.new(color.maroon, 80), "", inline='3', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+unitsLT = input.float(10,"|| Sweep grade ($/pips)", inline='3', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+showTxt = input.bool(true, "txt",  inline ='4', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+txtColbx = input.color(color.maroon, "", inline ='4', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+txtSize = input.string(size.small,"", options = [size.auto, size.tiny, size.small, size.normal, size.large, size.huge], inline ='4', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+valignChoice = input.string(text.align_center,"Vpos", options = [text.align_top, text.align_center, text.align_bottom], inline ='4', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+halignChoice = input.string(text.align_right,"Hpos", options = [text.align_left, text.align_center, text.align_right], inline ='4', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+    //**edit this to simple float input?? no options??...
+//units = input.float(5, "Box Height, 'Sweep grade' ($ or pips)", options = [0, 0.125, 0.25, 0.5, 1,2,3,5,10, 20, 30, 40, 50,100,200,500,1000], group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~', tooltip = "Height of box beyond pivot high/low\n\nAuto detects units (handles($) for indices/commodities; pips for FX\n\nS&P recommended settings = 5 or 10\n\nFX recommended settings = 10, 20, 30\n\nBonds recommended settings = 0.125 (4 ticks), 0.25 ( 8 ticks), 0.5 (16 ticks), 1 (32 ticks); where $1 = 32 ticks\n\nBitcoin recommmended settings = 50, 100, 200, 500. 1000\n\nAlerts will be based on this input. Choose =0 if you're just interested in touch/peep of the pivot high or low")
+pUnits = syminfo.type== 'index' or syminfo.type == 'futures'? "$": syminfo.type=='forex'?'pips':"$" 
+endAtPrice = input.bool(true, "end boxes/lines at price", inline ='5',  group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~', tooltip = "if set to 1 (default); in realtime, sweep boxes/lines will paint until met/Filled by price; then they will disappear")
+numBoxesLines = input.int(1, "|| Historical Boxes/lines:", minval = 1, inline ='5', group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')   //** best leave this out, it's only confusing and not working ideally
+boxWidth = input.int(10, "// Box width (bars):", inline ='6',  group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~')
+extendChoice = input.bool(false, "extend boxes/lines right", inline ='6',  group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~', tooltip ="this line of options only applies if the above 'end boxes/lines at price' is toggled OFF")
+shrinkGradeSweepsOnFill =input.bool(true, "shrink grade sweeps on fill", inline ='7',  group = '~~~~~~~~~~~~~~~ Sweep Boxes ~~~~~~~~~~~~~~~', tooltip ="When price fills a grade sweep box, box will disappear\n\nFor real-time reading of price action & to declutter chart, toggle this ON\n\nFor backtesting purposes, better to have this toggled OFF")
+
+    // •••• User Inputs: FVGs ••••
+showFVGs = input.bool(true, "•  Show FVGs •", inline ='-1',group =  '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+barsBackFVG = input.int(80, "Bars Lookback",  inline ='0',group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+showUP = input.bool(true, "'UP' FVGs (BISI):", inline ='1', group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+colUp = input.color(color.new(color.orange, 70), "", inline ='1', group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+showDN = input.bool(true, "'DOWN' FVGs (SIBI):", inline ='1', group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+colDn = input.color(color.new(color.blue, 70), "", inline ='1', group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+showCE = input.bool(true, "show CE", inline ='3', group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+ceCol = input.color(color.new(color.black, 1), "| color:", inline ='3', group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+_ceStyle = input.string("Dotted", "| style:", options=["Dashed", "Dotted", "Solid"], inline ='3', group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~')
+CEcond = input.bool (true, "Use CE (as opposed to Full Fill)", group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~', tooltip = "If toggled OFF, FVGs and CEs will paint until FVG has been completely filled.\n\nThis threshold is used for Alert conditions too:\ni.e. this will determine if your 'ABOVE threshold' alert fires when price hits most recent FVG CE ABOVE or most recent FVG Full Fill ABOVE\n\nAlerts are set by clicking the three dots on the indicator display line.")
+shrinkFVGonFill = input.bool(true, "shrink FVG on fill (CE hit or Full fill)", group = '~~~~~~~~~~~~~~~~~~~~ FVGs ~~~~~~~~~~~~~~~~~~~~', tooltip ="To declutter chart; FVGs which have had their threshold hit (CE or Full fill, depending on the above checkbox), will shrink to the single bar on which they originated\n\nFor backtesting it would be more useful to have this toggled OFF; for realtime better have it toggled ON")
+
+///////////////////////////////////////////////////////////////////////////
+///////// #####  PIVOT HIGHS, PIVOT LOWS, SWEEP BOXES #####////////////////
+///////////////////////////////////////////////////////////////////////////
+
+gradeSweepST = syminfo.type== 'index' or syminfo.type == 'futures'? 1*unitsST:syminfo.type=='forex'? 0.0001*unitsST:1*unitsST
+gradeSweepLabST = syminfo.type== 'index' or syminfo.type == 'futures'? str.tostring(gradeSweepST):syminfo.type=='forex'?str.tostring(10000*gradeSweepST): str.tostring(gradeSweepST)
+gradeSweepMT = syminfo.type== 'index' or syminfo.type == 'futures'? 1*unitsMT:syminfo.type=='forex'? 0.0001*unitsMT:1*unitsMT
+gradeSweepLabMT = syminfo.type== 'index' or syminfo.type == 'futures'? str.tostring(gradeSweepMT):syminfo.type=='forex'?str.tostring(10000*gradeSweepMT): str.tostring(gradeSweepMT)
+gradeSweepLT = syminfo.type== 'index' or syminfo.type == 'futures'? 1*unitsLT:syminfo.type=='forex'? 0.0001*unitsLT:1*unitsLT
+gradeSweepLabLT = syminfo.type== 'index' or syminfo.type == 'futures'? str.tostring(gradeSweepLT):syminfo.type=='forex'?str.tostring(10000*gradeSweepLT): str.tostring(gradeSweepLT)
+//##
+atrSpacer = ta.atr(300)
+colorNone=color.new(color.white, 100)
+
+string lineStyle = switch lineStyleInput
+    "Dotted" => line.style_dotted
+    "Dashed" => line.style_dashed
+    "Solid"  => line.style_solid
+
+string textStyleSTH = switch inputTextStyleSTH 
+    "Ʌ (single)" => "ʌ"
+    "text horizontal" =>  "STH\nʌ"
+    "text vertical" => "S\nT\nH\n."
+string textStyleMTH = switch inputTextStyleMTH 
+    "Ʌ (double)" => "ʌ\nʌ"
+    "text horizontal" =>  "MTH\nʌ"
+    "text vertical" => "M\nT\nH\n."
+string textStyleLTH = switch inputTextStyleLTH 
+    "Ʌ (triple)" => "ʌ\nʌ\nʌ"
+    "text horizontal" =>  "LTH\nʌ"
+    "text vertical" => "L\nT\nH\n."
+string textStyleSTL = switch inputTextStyleSTL 
+    "V (single)" => "v"
+    "text horizontal" =>  "v\nSTL"
+    "text vertical" => ".\nS\nT\nL"
+string textStyleMTL = switch inputTextStyleMTL 
+    "V (double)" => "v\nv"
+    "text horizontal" =>  "v\nMTL"
+    "text vertical" => ".\nM\nT\nL"
+string textStyleLTL = switch inputTextStyleLTL 
+    "V (triple)" => "v\nv\nv"
+    "text horizontal" =>  "v\nLTL"
+    "text vertical" => ".\nL\nT\nL"
+
+pivHigh = ta.pivothigh(high, lb1, lb1)
+pivLow = ta.pivotlow(low, lb1, lb1)
+isPivHigh = na(pivHigh)? false:true
+isPivLow = na(pivLow)? false:true
+
+var float PH = na
+var float PL = na
+var array<float> PHarr = array.new<float>(0)
+var array<float> PLarr = array.new<float>(0)
+
+var label countLabH = na
+var label countLabL = na
+var array<label> countLabHArr = array.new<label>(0)
+var array<label> countLabLArr = array.new<label>(0)
+var int PHbarInd =0
+var int PLbarInd =0
+var array<int>PHbarIndArr=array.new<int>(0)
+var array<int>PLbarIndArr=array.new<int>(0)
+var int MTHbarInd =0
+var int MTLbarInd =0
+var array<int>MTHbarIndArr=array.new<int>(0)
+var array<int>MTLbarIndArr=array.new<int>(0)
+var float MTH = na
+var float MTL = na
+var array<float> MTHarr = array.new<float>(0)
+var array<float> MTLarr = array.new<float>(0)
+var label MTHlab = na
+var label MTLlab = na
+var array<label> MTHlabArr = array.new<label>(0)
+var array<label> MTLlabArr = array.new<label>(0)
+var array<float> LTHarr = array.new<float>(0)
+var array<float> LTLarr = array.new<float>(0)
+
+///~~~~~~ line arrays declared
+var line STHline = na, var array<line> STHlineArr = array.new<line>(0)
+var line STLline = na, var array<line> STLlineArr = array.new<line>(0)
+var line MTHline = na, var array<line> MTHlineArr = array.new<line>(0)
+var line MTLline = na, var array<line> MTLlineArr = array.new<line>(0)
+var line LTHline = na, var array<line> LTHlineArr = array.new<line>(0)
+var line LTLline = na, var array<line> LTLlineArr = array.new<line>(0)
+
+///~~~~~~ Box arrays declared
+var box STHbox = na, var array<box> STHboxArr = array.new<box>(0)
+var box STLbox = na, var array<box> STLboxArr = array.new<box>(0)
+var box MTHbox = na, var array<box> MTHboxArr = array.new<box>(0)
+var box MTLbox = na, var array<box> MTLboxArr = array.new<box>(0)
+var box LTHbox = na, var array<box> LTHboxArr = array.new<box>(0)
+var box LTLbox = na, var array<box> LTLboxArr = array.new<box>(0)
+
+    //////////////////////////////////////////////
+    ////    #####  PIVOT HIGHS & SWEEP BOXES #####
+    
+
+    //spikey condition
+atr = ta.atr(2*lb1)
+maH = ta.sma(high, 2*lb1)
+bool spikeyH = useSpikeyCond? pivHigh > maH+atrMult*atr:true
+    //
+if isPivHigh and lookbackCond 
+    if spikeyH
+        PH:= pivHigh
+        array.push(PHarr,PH)
+        array.push(PHbarIndArr,bar_index-lb1)
+        countLabH:=label.new(bar_index-lb1, high[lb1]+unit_1*atrSpacer, textStyleSTH, style=label.style_label_down, textcolor =showSTHs and showPivHighsLows?txtColSTH:colorNone, size = sizeSTH, color = colorNone)
+        array.push(countLabHArr,countLabH)
+        if showSTHlines and showPivHighsLows
+            STHline:= line.new(bar_index-lb1,high[lb1], bar_index, high[lb1], color =txtColSTH, style = lineStyle, width =lineWidth, extend = extendChoice?extend.right:extend.none)
+            array.push(STHlineArr, STHline)
+        if showSTHboxes and showSweepBoxes
+            STHbox:= box.new(bar_index-lb1, high[lb1] + gradeSweepST, bar_index-lb1+boxWidth, high[lb1],text = showTxt?(gradeSweepLabST +pUnits+"          "):"" , text_valign=valignChoice,text_halign=halignChoice, text_size = txtSize, xloc = xloc.bar_index, 
+                 text_color = txtCol, border_color = colorNone, bgcolor = STHbxCol, extend = extendChoice?extend.right:extend.none)
+            array.push(STHboxArr, STHbox)
+if array.size(STHboxArr)>numBoxesLines
+    box.delete(array.shift(STHboxArr))
+if array.size(STHlineArr)>numBoxesLines
+    line.delete(array.shift(STHlineArr))
+
+PHbarIndArrSize = array.size(PHbarIndArr)         
+PHarrSize = array.size(PHarr)
+
+_lastSTH = array.size(PHarr)>1?array.get(PHarr, PHarrSize-1):na
+_lastBarIndSTH = array.size(PHbarIndArr)>1?array.get(PHbarIndArr, PHbarIndArrSize-1):na
+_2ndLastSTH = array.size(PHarr)>2?array.get(PHarr, PHarrSize-2):na
+_2ndLastBarIndSTH = array.size(PHbarIndArr)>2?array.get(PHbarIndArr, PHbarIndArrSize-2):na
+_3rdLastSTH= array.size(PHarr)>3?array.get(PHarr, PHarrSize-3):na
+_3rdLastBarIndSTH= array.size(PHbarIndArr)>3?array.get(PHbarIndArr, PHbarIndArrSize-3):na
+
+MTH_index = array.indexof(PHbarIndArr, _2ndLastBarIndSTH)
+if (_lastSTH<_2ndLastSTH and _2ndLastSTH>_3rdLastSTH) and not (_lastSTH<_2ndLastSTH and _2ndLastSTH>_3rdLastSTH)[1] 
+    MTHlab:=label.new(_2ndLastBarIndSTH, _2ndLastSTH+unit_1*atrSpacer, textStyleMTH, style=label.style_label_down, textcolor =showMTHs and showPivHighsLows?txtColMTH:colorNone, size = sizeMTH, color = colorNone)
+    array.push(MTHarr,_2ndLastSTH)
+    array.push(MTHbarIndArr,_2ndLastBarIndSTH)
+    array.push(MTHlabArr, MTHlab)
+    label.set_text(array.get(countLabHArr, MTH_index),"")
+    if showMTHlines and showPivHighsLows
+        MTHline:= line.new(_2ndLastBarIndSTH,_2ndLastSTH, bar_index, _2ndLastSTH, color =txtColMTH, style = lineStyle, width =lineWidth, extend = extendChoice?extend.right:extend.none)
+        array.push(MTHlineArr, MTHline)
+    if showMTHboxes and showSweepBoxes
+        MTHbox:= box.new(_2ndLastBarIndSTH,_2ndLastSTH + gradeSweepMT, _2ndLastBarIndSTH+boxWidth, _2ndLastSTH ,text = showTxt?(gradeSweepLabMT +pUnits+"     "):"" , text_valign=valignChoice,text_halign=halignChoice, text_size = txtSize, xloc = xloc.bar_index, 
+             text_color = txtCol, border_color = colorNone, bgcolor = MTHbxCol, extend = extendChoice?extend.right:extend.none)
+        array.push(MTHboxArr, MTHbox)
+if array.size(MTHboxArr)>numBoxesLines
+    box.delete(array.shift(MTHboxArr))
+if array.size(MTHlineArr)>numBoxesLines
+    line.delete(array.shift(MTHlineArr))
+
+MTHbarIndArrSize = array.size(MTHbarIndArr)         
+MTHsizeOfArr = array.size(MTHarr)
+MTHlabArrSize = array.size(MTHlabArr)
+
+_lastMTH = array.size(MTHarr)>1?array.get(MTHarr, MTHsizeOfArr-1):na
+_lastBarIndMTH = array.size(MTHbarIndArr)>1?array.get(MTHbarIndArr, MTHbarIndArrSize-1):na
+_2ndLastMTH = array.size(MTHarr)>2?array.get(MTHarr, MTHsizeOfArr-2):na
+_2ndLastBarIndMTH = array.size(MTHbarIndArr)>2?array.get(MTHbarIndArr, MTHbarIndArrSize-2):na
+_3rdLastMTH= array.size(MTHarr)>3?array.get(MTHarr, MTHsizeOfArr-3):na
+_3rdLastBarIndMTH= array.size(MTHbarIndArr)>3?array.get(MTHbarIndArr, MTHbarIndArrSize-3):na
+
+LTH_index1 = array.indexof(PHbarIndArr, _2ndLastBarIndMTH)
+LTH_index2 = array.indexof(MTHbarIndArr, _2ndLastBarIndMTH)
+
+if (_lastMTH<_2ndLastMTH and _2ndLastMTH>_3rdLastMTH) and not (_lastMTH<_2ndLastMTH and _2ndLastMTH>_3rdLastMTH)[1] 
+    label.new(_2ndLastBarIndMTH, _2ndLastMTH+unit_1*atrSpacer, textStyleLTH, style=label.style_label_down, textcolor =showLTHs and showPivHighsLows?txtColLTH:colorNone, size = sizeLTH, color = colorNone)
+    label.set_text(array.get(MTHlabArr, LTH_index2),"")
+    label.set_text(array.get(countLabHArr, LTH_index1),"")
+    array.push(LTHarr,_2ndLastMTH)
+    if showLTHlines and showPivHighsLows
+        LTHline:= line.new(_2ndLastBarIndMTH,_2ndLastMTH, bar_index, _2ndLastMTH, color = txtColLTH, style = lineStyle, width =lineWidth, extend = extendChoice?extend.right:extend.none)
+        array.push(LTHlineArr, LTHline)
+    if showLTHboxes and showSweepBoxes
+        LTHbox:= box.new(_2ndLastBarIndMTH,_2ndLastMTH + gradeSweepLT, _2ndLastBarIndMTH+boxWidth, _2ndLastMTH ,text = showTxt?(gradeSweepLabLT +pUnits):"" , text_valign=valignChoice,text_halign=halignChoice, text_size = txtSize, xloc = xloc.bar_index, 
+             text_color = txtCol, border_color = colorNone, bgcolor = LTHbxCol, extend = extendChoice?extend.right:extend.none)
+        array.push(LTHboxArr, LTHbox)
+if array.size(LTHboxArr)>numBoxesLines
+    box.delete(array.shift(LTHboxArr))
+if array.size(LTHlineArr)>numBoxesLines
+    line.delete(array.shift(LTHlineArr))
+
+    /////////////////////////////////////////////
+    ////    #####  PIVOT LOWS & SWEEP BOXES #####
+
+    //spikey condition
+maL = ta.sma(low, 2*lb1)
+bool spikeyL = useSpikeyCond? pivLow < maL-atrMult*atr:true
+    //
+if isPivLow and lookbackCond 
+    if spikeyL
+        PL:= pivLow
+        array.push(PLarr,PL)
+        array.push(PLbarIndArr,bar_index-lb1)
+        countLabL:=label.new(bar_index-lb1, low[lb1]-unit_1*atrSpacer, textStyleSTL, style=label.style_label_up, textcolor =showSTLs and showPivHighsLows?txtColSTL:colorNone, size = sizeSTL, color = colorNone)
+        array.push(countLabLArr,countLabL)
+        if showSTLlines and showPivHighsLows
+            STLline:= line.new(bar_index-lb1,low[lb1], bar_index, low[lb1], color =txtColSTL, style = lineStyle, width =lineWidth, extend = extendChoice?extend.right:extend.none)
+            array.push(STLlineArr, STLline)
+        if showSTLboxes and showSweepBoxes
+            STLbox:= box.new(bar_index-lb1,low[lb1], bar_index-lb1+boxWidth, low[lb1]- gradeSweepST,text = showTxt?(gradeSweepLabST +pUnits)+"          ":"" , text_valign=valignChoice,text_halign=halignChoice, text_size = txtSize, xloc = xloc.bar_index, 
+                 text_color = txtCol, border_color = colorNone, bgcolor = STLbxCol, extend = extendChoice?extend.right:extend.none)
+            array.push(STLboxArr, STLbox)
+if array.size(STLboxArr)>numBoxesLines
+    box.delete(array.shift(STLboxArr))
+if array.size(STLlineArr)>numBoxesLines
+    line.delete(array.shift(STLlineArr))
+
+PLbarIndArrSize = array.size(PLbarIndArr)         
+PLarrSize = array.size(PLarr)
+
+_lastSTL = array.size(PLarr)>1?array.get(PLarr, PLarrSize-1):na
+_lastBarIndSTL = array.size(PLbarIndArr)>1?array.get(PLbarIndArr, PLbarIndArrSize-1):na
+_2ndLastSTL = array.size(PLarr)>2?array.get(PLarr, PLarrSize-2):na
+_2ndLastBarIndSTL = array.size(PLbarIndArr)>2?array.get(PLbarIndArr, PLbarIndArrSize-2):na
+_3rdLastSTL= array.size(PLarr)>3?array.get(PLarr, PLarrSize-3):na
+_3rdLastBarIndSTL= array.size(PLbarIndArr)>3?array.get(PLbarIndArr, PLbarIndArrSize-3):na
+
+MTL_index = array.indexof(PLbarIndArr, _2ndLastBarIndSTL)
+
+if (_lastSTL>_2ndLastSTL and _2ndLastSTL<_3rdLastSTL) and not (_lastSTL>_2ndLastSTL and _2ndLastSTL<_3rdLastSTL)[1] 
+    MTLlab:=label.new(_2ndLastBarIndSTL, _2ndLastSTL-unit_1*atrSpacer, textStyleMTL, style=label.style_label_up, textcolor =showMTLs and showPivHighsLows?txtColMTL:colorNone, size = sizeMTL, color = colorNone)
+    array.push(MTLarr,_2ndLastSTL)
+    array.push(MTLbarIndArr,_2ndLastBarIndSTL)
+    array.push(MTLlabArr, MTLlab)
+    label.set_text(array.get(countLabLArr, MTL_index),"")
+    if showMTLlines and showPivHighsLows
+        MTLline:= line.new(_2ndLastBarIndSTL,_2ndLastSTL, bar_index, _2ndLastSTL, color =txtColMTL, style = lineStyle, width =lineWidth, extend = extendChoice?extend.right:extend.none)
+        array.push(MTLlineArr, MTLline)
+    if showMTLboxes and showSweepBoxes
+        MTLbox:= box.new(_2ndLastBarIndSTL, _2ndLastSTL, _2ndLastBarIndSTL+boxWidth, _2ndLastSTL- gradeSweepMT,text = showTxt?(gradeSweepLabMT +pUnits+"     "):"" , text_valign=valignChoice,text_halign=halignChoice, text_size = txtSize, xloc = xloc.bar_index, 
+             text_color = txtCol, border_color = colorNone, bgcolor = MTLbxCol, extend = extendChoice?extend.right:extend.none)
+        array.push(MTLboxArr, MTLbox)
+if array.size(MTLboxArr)>numBoxesLines
+    box.delete(array.shift(MTLboxArr))
+if array.size(MTLlineArr)>numBoxesLines
+    line.delete(array.shift(MTLlineArr))
+
+MTLbarIndArrSize = array.size(MTLbarIndArr)         
+MTLsizeOfArr = array.size(MTLarr)
+MTLlabArrSize = array.size(MTLlabArr)
+
+_lastMTL = array.size(MTLarr)>1?array.get(MTLarr, MTLsizeOfArr-1):na
+_lastBarIndMTL = array.size(MTLbarIndArr)>1?array.get(MTLbarIndArr, MTLbarIndArrSize-1):na
+_2ndLastMTL = array.size(MTLarr)>2?array.get(MTLarr, MTLsizeOfArr-2):na
+_2ndLastBarIndMTL = array.size(MTLbarIndArr)>2?array.get(MTLbarIndArr, MTLbarIndArrSize-2):na
+_3rdLastMTL= array.size(MTLarr)>3?array.get(MTLarr, MTLsizeOfArr-3):na
+_3rdLastBarIndMTL= array.size(MTLbarIndArr)>3?array.get(MTLbarIndArr, MTLbarIndArrSize-3):na
+
+LTL_index1 = array.indexof(PLbarIndArr, _2ndLastBarIndMTL)
+LTL_index2 = array.indexof(MTLbarIndArr, _2ndLastBarIndMTL)
+
+if (_lastMTL>_2ndLastMTL and _2ndLastMTL<_3rdLastMTL) and not (_lastMTL>_2ndLastMTL and _2ndLastMTL<_3rdLastMTL)[1] 
+    label.new(_2ndLastBarIndMTL, _2ndLastMTL-unit_1*atrSpacer, textStyleLTL, style=label.style_label_up, textcolor =showLTLs and showPivHighsLows?txtColLTL:colorNone, size = sizeLTL, color = colorNone)
+    label.set_text(array.get(MTLlabArr, LTL_index2),"")
+    label.set_text(array.get(countLabLArr, LTL_index1),"")
+    array.push(LTLarr,_2ndLastMTL)
+    if showLTLlines and showPivHighsLows
+        LTLline:= line.new(_2ndLastBarIndMTL,_2ndLastMTL, bar_index, _2ndLastMTL, color =txtColLTL, style = lineStyle, width =lineWidth, extend = extendChoice?extend.right:extend.none)
+        array.push(LTLlineArr, LTLline)
+    if showLTLboxes and showSweepBoxes
+        LTLbox:= box.new(_2ndLastBarIndMTL, _2ndLastMTL, _2ndLastBarIndMTL+boxWidth, _2ndLastMTL- gradeSweepLT,text = showTxt?(gradeSweepLabLT +pUnits):"" , text_valign=valignChoice,text_halign=halignChoice, text_size = txtSize, xloc = xloc.bar_index, 
+             text_color = txtCol, border_color = colorNone, bgcolor = LTLbxCol, extend = extendChoice?extend.right:extend.none)
+        array.push(LTLboxArr, LTLbox)
+if array.size(LTLboxArr)>numBoxesLines
+    box.delete(array.shift(LTLboxArr))
+if array.size(LTLlineArr)>numBoxesLines
+    line.delete(array.shift(LTLlineArr))
+
+    // ~~ Alerts ~~
+lastLTH = array.size(LTHarr)>0?array.last(LTHarr):na
+lastLTL = array.size(LTLarr)>0?array.last(LTLarr):na
+lastMTH = array.size(MTHarr)>0?array.last(MTHarr):na
+lastMTL = array.size(MTLarr)>0?array.last(MTLarr):na
+lastSTH = array.size(PHarr)>0? array.last(PHarr):na
+lastSTL = array.size(PLarr)>0? array.last(PLarr):na
+alertcondition(ta.crossover(close, lastLTH), "LTH, cross above", "price has crossed above last LTH")
+alertcondition(ta.crossunder(close, lastLTL), "LTL, cross below", "price has crossed below last LTL")
+alertcondition(ta.crossover(close, lastMTH), "MTH, cross above", "price has crossed above last MTH")
+alertcondition(ta.crossunder(close, lastMTL), "MTL, cross below", "price has crossed below last MTL")
+alertcondition(ta.crossover(close, lastSTH), "STH, cross above", "price has crossed above last STH")
+alertcondition(ta.crossunder(close, lastSTL), "STL, cross below", "price has crossed below last STL")
+
+
+    ////////////////////////////////////////////////////////////
+    ////    #####  Extend Sweep boxes / Shrink Sweep Boxes #####
+
+pivBxExtToPrice(array<box>boxArray,  simple bool isBull, int maxSize) =>    
+    if boxArray.size() > 0
+        for i = boxArray.size() -1 to 0
+            box bx = boxArray.get(i)
+            bx.set_right(bar_index)
+            int bxStart = bx.get_left()
+            float bxEdge = isBull? bx.get_top() : -bx.get_bottom()     
+            float price = isBull ? high : -low  
+            if price > bxEdge 
+                if shrinkGradeSweepsOnFill
+                    bx.set_left(bxStart)
+                    bx.set_right(bxStart+1)
+                boxArray.remove(i)
+    if boxArray.size() > maxSize
+        box.delete(boxArray.shift())
+
+pivLnExtToPrice(array<line>lineArray,  simple bool isBull,int maxSize) =>    
+    if lineArray.size() > 0
+        for i = lineArray.size() -1 to 0
+            line ln = lineArray.get(i)
+            int x1 = line.get_x1(ln)   
+            ln.set_x2(bar_index)
+            float lnHeight = isBull? ln.get_price(bar_index):-ln.get_price(bar_index)
+            float price = isBull ? high : -low  
+            if price > lnHeight 
+                if shrinkGradeSweepsOnFill
+                    ln.set_x1(x1)
+                    ln.set_x2(x1+1)
+                ln.delete()
+                lineArray.shift()
+    if lineArray.size() > maxSize
+        line.delete(lineArray.shift())
+
+if endAtPrice
+    pivBxExtToPrice(STHboxArr,true,2) 
+    pivBxExtToPrice(STLboxArr,false,2) 
+    pivBxExtToPrice(MTHboxArr,true,2) 
+    pivBxExtToPrice(MTLboxArr,false,2) 
+    pivBxExtToPrice(LTHboxArr,true,2) 
+    pivBxExtToPrice(LTLboxArr,false,2) 
+
+    pivLnExtToPrice(STHlineArr,true,2)
+    pivLnExtToPrice(STLlineArr,false,2)
+    pivLnExtToPrice(MTHlineArr,true,2)
+    pivLnExtToPrice(MTLlineArr,false,2)
+    pivLnExtToPrice(LTHlineArr,true,2)
+    pivLnExtToPrice(LTLlineArr,false,2)
+
+
+/////////////////////////////////////////////////////////
+/////////       #####  CHoCHs #####      ////////////////
+/////////////////////////////////////////////////////////
+
+string lineStyleCh = switch _lineStyleCh
+    "Dotted" => line.style_dotted
+    "Dashed" => line.style_dashed
+    "Solid"  => line.style_solid
+
+
+color ColChoice = switch 
+    timeframe.period == "1"   => _1minCol
+    timeframe.period == "5"   => _5minCol
+    timeframe.period == "15"  => _15minCol
+    timeframe.period == "60"  => _HCol
+    timeframe.period == "240" => _4hrCol
+    timeframe.period == "D"   => _DCol
+    timeframe.period == "W"   => _WCol
+    timeframe.period == "M"   => _MCol
+
+pivHighCh = ta.pivothigh(high, lb_ch, lf_ch)
+pivLowCh = ta.pivotlow(low, lb_ch, lf_ch)
+ispivHighCh = na(pivHighCh)? false:true
+ispivLowCh = na(pivLowCh)? false:true
+
+lookbackCondCh = bar_index > last_bar_index - barsBackCh
+
+var float PhCh = na
+var float PlCh = na
+var array<float> PhCharr = array.new<float>(0)
+var array<float> PlCharr = array.new<float>(0)
+
+var label pivHighChLab = na
+var label pivLowChLab = na
+var array<label> pivHighChLabArr = array.new<label>(0)
+var array<label> pivLowChLabArr = array.new<label>(0)
+
+    //
+if ispivHighCh  and lookbackCondCh 
+    PhCh:= pivHighCh
+    array.push(PhCharr,PhCh)
+    
+PhCharrSize = array.size(PhCharr)
+
+
+if ispivLowCh and lookbackCondCh 
+    PlCh:= pivLowCh
+    array.push(PlCharr,PlCh)
+
+PlCharrSize = array.size(PlCharr)
+
+lastPhChigh = PhCharrSize>0? array.last(PhCharr):na
+lastPlChow = PlCharrSize>0? array.last(PlCharr):na
+
+getChochD()=>
+    int num = 0
+    for i = 0 to 20
+        if high[i]>=high[i+1] 
+            num+=1
+        if high[i]<high[i+1] 
+            break
+        num
+
+getChochU()=>
+    int num = 0
+    for i = 0 to 20
+        if low[i]<=low[i+1]
+            num+=1
+        if low[i]>low[i+1]
+            break
+        num
+
+var array<line> chochDArr = array.new<line>(0)
+label labBrUp = na
+line chochD = na
+var array<line> chochUArr = array.new<line>(0)
+label labBrDn = na
+line chochU = na
+
+label chochDlab =na
+var array<label> chochDlabArr = array.new<label>(0)
+label chochUlab =na
+var array<label> chochUlabArr = array.new<label>(0)
+
+    //CHoCH DOWN
+float CHochDNprice =na
+var array<float> CHochDNpriceArr = array.new<float>(0)
+
+if high>lastPhChigh and lookbackCondCh and showDNchoch and showChochs
+    CHochDNprice:=low[getChochD()]
+    array.push(CHochDNpriceArr,CHochDNprice)
+    chochD:= line.new(bar_index-getChochD(), low[getChochD()], bar_index+getChochD(), low[getChochD()], style = lineStyleCh, width = lineWidthCh, color = MultiTFcolorOveride?ColChoice:dnChochCol)   
+    chochDlab:= label.new(bar_index+5,low[getChochD()], dnIcon, style = label.style_label_center, color = colorNone, textcolor = MultiTFcolorOveride?ColChoice:dnChochCol, size = dnIconSize) //bar_index+5 ??
+    array.push(chochDArr, chochD)
+    array.push(chochDlabArr, chochDlab)
+        //condition to shift +1 bar for fakeout chochs
+    if low[getChochD()] > low[getChochD()-1]
+        line.set_xy1(array.last(chochDArr),bar_index-getChochD()+1, low[getChochD()-1])
+        line.set_xy2(array.last(chochDArr),bar_index+6, low[getChochD()-1]) // bar_index+5 ??
+        label.set_xy(array.last(chochDlabArr),bar_index+6,low[getChochD()-1]) // bar_index+6 ??
+    label.delete(chochDlab[1])
+    line.delete(chochD[1])
+
+    if array.size(chochDArr)>numActiveChoch
+        line.delete(array.shift(chochDArr))
+    if array.size(chochDlabArr)>numActiveChoch
+        label.delete(array.shift(chochDlabArr))
+    if array.size(CHochDNpriceArr)>numActiveChoch
+        array.shift(CHochDNpriceArr)
+
+    //CHoCH UP
+float CHochUPprice =na
+var array<float> CHochUPpriceArr = array.new<float>(0)
+
+if low<lastPlChow  and lookbackCondCh and showUPchoch and showChochs
+    CHochUPprice:=high[getChochU()]
+    array.push(CHochUPpriceArr,CHochUPprice)
+    chochU:= line.new(bar_index-getChochU(), high[getChochU()], last_bar_index, high[getChochU()], style = lineStyleCh, width = lineWidthCh, color = MultiTFcolorOveride?ColChoice:upChochCol)   
+    chochUlab:= label.new(bar_index-getChochU()+5,high[getChochU()], upIcon, style = label.style_label_center, color = colorNone, textcolor = MultiTFcolorOveride?ColChoice:upChochCol, size = upIconSize) //label.new(bar_index-getChochU()+5 ??
+    array.push(chochUArr, chochU)
+    array.push(chochUlabArr, chochUlab)
+        //condition to shift +1 bar for fakeout chochs
+    if high[getChochU()] < high[getChochU()-1]
+        line.set_xy1(array.last(chochUArr),bar_index-getChochU()+1, high[getChochU()-1])
+        line.set_xy2(array.last(chochUArr),bar_index+5, high[getChochU()-1]) // bar_index+5 ??
+        label.set_xy(array.last(chochUlabArr),bar_index-getChochU()+6,high[getChochU()-1])
+
+    label.delete(chochUlab[1])
+    line.delete(chochU[1])
+        //following 4 lines are used with 'number of 'active' chochs to show'.. but perhaps best to keep it simple and just control via bars lookback condition
+    if array.size(chochUArr)>numActiveChoch
+        line.delete(array.shift(chochUArr))
+    if array.size(chochUlabArr)>numActiveChoch
+        label.delete(array.shift(chochUlabArr))
+    if array.size(CHochUPpriceArr)>numActiveChoch
+        array.shift(CHochUPpriceArr)
+
+lastChochUP = array.size(CHochUPpriceArr)>0?array.last(CHochUPpriceArr):na
+lastChochDN = array.size(CHochDNpriceArr)>0?array.last(CHochDNpriceArr):na
+
+alertcondition(ta.crossover(close, lastChochUP ), "last CHoCH UP, cross above", "price has crossed above last CHoCH up")
+alertcondition(ta.crossunder(close, lastChochDN), "last CHoCH DOWN, cross below", "price has crossed below last CHoCH down")
+
+
+
+///### Adding self-terminating lines
+
+chochLnLabExtToPrice( array<line> lineArray, array<label>labArray, simple bool isBull, int maxSize) =>  ///testing reclocation of "▲" label ( array<label>labArray,)
+    if lineArray.size() > 0 and labArray.size()>0
+        for i = lineArray.size() -1 to 0
+            line ln = lineArray.get(i)
+            label lb = labArray.get(i)
+            int x1 = line.get_x1(ln)   
+            ln.set_x2(bar_index)
+            lb.set_x(bar_index -( math.round(bar_index-x1)/2) )
+            float lnHeight = isBull? ln.get_price(bar_index): -ln.get_price(bar_index)                   
+            float price = isBull ? high : -low  
+            if price > lnHeight
+                if shrinkChochOnfill
+                    lb.set_x(x1+1)
+                    ln.set_x1(x1)
+                    ln.set_x2(x1+1)
+                lineArray.remove(i) 
+                labArray.remove(i)
+
+    if lineArray.size() > maxSize
+        line.delete(lineArray.shift())
+    if labArray.size() > maxSize      
+        label.delete(labArray.shift())     
+
+chochLnLabExtToPrice(chochUArr,chochUlabArr,true,numActiveChoch) 
+chochLnLabExtToPrice(chochDArr,chochDlabArr,false, numActiveChoch) 
+
+chochUArrSize = array.size(chochUArr)
+chochUlabArrSize = array.size(chochUlabArr)
+chochDArrSize = array.size(chochDArr)
+chochDlabArrSize = array.size(chochDlabArr)
+
+lastChUpPrice = chochUArrSize>0?line.get_price(array.last(chochUArr), bar_index):na
+lastChUpX1 = chochUArrSize>0?line.get_x1(array.last(chochUArr)):na
+
+
+lastChDnPrice = chochDArrSize>0?line.get_price(array.last(chochDArr), bar_index):na
+lastChDnX1 = chochDArrSize>0?line.get_x1(array.last(chochDArr)):na
+
+    // Conditions to extend latest CHoCH line only by 10 bars
+if not ta.crossunder(low, lastChDnPrice) and chochDArrSize >0 and chochDlabArrSize>0
+    line.set_x2(array.last(chochDArr), bar_index+10)
+    label.set_x(array.last(chochDlabArr),lastChDnX1 + ((bar_index-lastChDnX1)/2) +5)
+if not ta.crossover(high, lastChUpPrice) and chochUArrSize >0 and chochUlabArrSize>0
+    line.set_x2(array.last(chochUArr), bar_index+10)
+    label.set_x(array.last(chochUlabArr),lastChUpX1 +((bar_index-lastChUpX1)/2)+5)
+
+    ///////////////////////////////
+    ////    #####  HTF CHoCHs #####
+    ///////////////////////////////
+
+string lineStyleChHTF = switch _lineStyleChHTF
+    "Dotted" => line.style_dotted
+    "Dashed" => line.style_dashed
+    "Solid"  => line.style_solid
+
+getHtfPhPl()=>
+    float ph = ta.pivothigh(1, 1)
+    float pl = ta.pivotlow(1, 1)
+    [ph,  pl]
+
+[ph, pl] = request.security(syminfo.tickerid, HTF, getHtfPhPl(), lookahead = barmerge.lookahead_on)
+var array<float> htfPHarr = array.new<float>(0)
+var array<float> htfPLarr = array.new<float>(0)
+if na(ph[1]) and ph
+    array.push(htfPHarr, ph)
+if na(pl[1]) and pl
+    array.push(htfPLarr, pl)
+
+float lastPHhtf = array.size(htfPHarr)>0? array.last(htfPHarr):na
+float lastPLhtf = array.size(htfPLarr)>0? array.last(htfPLarr):na
+
+backCountLHs()=>
+    int num = 0
+    for i = 0 to 20
+        while i==num
+            if high[i]>=high[i+1] 
+                num+=1
+            break
+        num
+backCountHLs()=>
+    int num = 0
+    for i = 0 to 20
+        while i==num
+            if low[i]<=low[i+1] 
+                num+=1
+            break
+        num
+
+backCountLHs = request.security(syminfo.tickerid, HTF, backCountLHs())
+backCountHLs = request.security(syminfo.tickerid, HTF, backCountHLs())
+backCountLHsPrice = request.security(syminfo.tickerid, HTF, low[backCountLHs])
+backCountHLsPrice = request.security(syminfo.tickerid, HTF, high[backCountHLs])
+backCountLHsPricePlus1 = request.security(syminfo.tickerid, HTF, low[backCountLHs-1==-1?0:backCountLHs-1])
+backCountHLsPricePlus1 = request.security(syminfo.tickerid, HTF, high[backCountHLs-1==-1?0:backCountHLs-1])
+
+whenLastTFchg = ta.valuewhen(timeframe.change(HTF),bar_index, 0)
+when2ndLastTFchg = ta.valuewhen(timeframe.change(HTF),bar_index, 1)
+barDiff = whenLastTFchg - when2ndLastTFchg
+    //ideally returns barDiff; but if ltf is very small and htf is very large, 20k bar lookback doesn't cover the calculation =>> revert to less accurate method using pure time (just cosmetic anyway; the price level is uneffected)
+ltfBarsInHTFbar = not na(barDiff)?(barDiff): math.round(timeframe.in_seconds(HTF)  / timeframe.in_seconds(timeframe.period))
+
+line lineDownHtf =na
+var array<line> lineDownHtfarr = array.new<line>(0)
+label labDownHtf =na
+var array<label> labelDownHtfarr = array.new<label>(0)
+float CHochDNpriceHTF =na
+var array<float> CHochDNpriceHTFArr = array.new<float>(0)
+
+    //Choch Down HTF
+if ta.crossover(high, lastPHhtf)  and showChochs//and Cond1
+    CHochDNpriceHTF:=backCountLHsPrice
+    array.push(CHochDNpriceHTFArr, CHochDNpriceHTF)
+    lineDownHtf:= line.new(bar_index-ltfBarsInHTFbar-1, backCountLHsPrice, last_bar_index+10, backCountLHsPrice, color= useHTFchochs?htfDNcol:colorNone, style = lineStyleChHTF)
+    array.push(lineDownHtfarr, lineDownHtf)
+    labDownHtf:= label.new(last_bar_index+13,backCountLHsPrice, "🢃", style=label.style_label_center, color=colorNone, textcolor= useHTFchochs?htfDNcol:colorNone)
+    array.push(labelDownHtfarr, labDownHtf)
+    if backCountLHsPrice > backCountLHsPricePlus1
+        line.set_xy1(array.last(lineDownHtfarr),bar_index-ltfBarsInHTFbar-1, backCountLHsPricePlus1)
+        line.set_xy2(array.last(lineDownHtfarr),last_bar_index+10, backCountLHsPricePlus1)
+        label.set_xy(array.last(labelDownHtfarr),last_bar_index+13,backCountLHsPricePlus1)
+    if array.size(lineDownHtfarr)>1
+        line.delete(array.shift(lineDownHtfarr))
+    if array.size(labelDownHtfarr)>1
+        label.delete(array.shift(labelDownHtfarr))
+    if array.size(CHochDNpriceHTFArr)>1
+        array.shift(CHochDNpriceHTFArr)
+
+line lineUpHtf =na
+var array<line> lineUpHtfarr = array.new<line>(0)
+label labUpHtf =na
+var array<label> labelUpHtfarr = array.new<label>(0)
+float CHochUPpriceHTF =na
+var array<float> CHochUPpriceHTFArr = array.new<float>(0)
+
+    //Choch UP HTF
+if ta.crossunder(low, lastPLhtf) and showChochs//and Cond2
+    CHochUPpriceHTF:=backCountHLsPrice
+    array.push(CHochUPpriceHTFArr, CHochUPpriceHTF)
+    lineUpHtf:= line.new(bar_index-ltfBarsInHTFbar-1, backCountHLsPrice, last_bar_index+10, backCountHLsPrice, color= useHTFchochs?htfUPcol:colorNone, style = lineStyleChHTF)
+    array.push(lineUpHtfarr, lineUpHtf)
+    labUpHtf:= label.new(last_bar_index+13,backCountHLsPrice, "🢁", style=label.style_label_center, color=colorNone, textcolor= useHTFchochs?htfUPcol:colorNone)
+    array.push(labelUpHtfarr, labUpHtf)
+        //condition to shift +1 for fakeouts
+    if backCountHLsPrice < backCountHLsPricePlus1
+        line.set_xy1(array.last(lineUpHtfarr),bar_index-ltfBarsInHTFbar-1, backCountHLsPricePlus1)
+        line.set_xy2(array.last(lineUpHtfarr),last_bar_index+10, backCountHLsPricePlus1)
+        label.set_xy(array.last(labelUpHtfarr),last_bar_index+13,backCountHLsPricePlus1)
+    if array.size(lineUpHtfarr)>1
+        line.delete(array.shift(lineUpHtfarr))
+    if array.size(labelUpHtfarr)>1
+        label.delete(array.shift(labelUpHtfarr))
+    if array.size(CHochUPpriceHTFArr)>1
+        array.shift(CHochUPpriceHTFArr)
+
+lastChochUP_HTF = array.size(CHochUPpriceHTFArr)>0?array.last(CHochUPpriceHTFArr):na
+lastChochDN_HTF = array.size(CHochDNpriceHTFArr)>0?array.last(CHochDNpriceHTFArr):na
+
+alertcondition(ta.crossover(close, lastChochUP_HTF ), "HTF last CHoCH UP, cross above", "price has crossed above last HTF CHoCH up")
+alertcondition(ta.crossunder(close, lastChochDN_HTF), "HTF last CHoCH DOWN, cross below", "price has crossed below last HTF CHoCH down")
+
+aboveLstUPcond = close > lastChochUP_HTF 
+belowLstDNcond = close < lastChochDN_HTF
+
+/////////////////////////////////////////////////////////
+/////////        #####  FVGs #####       ////////////////
+/////////////////////////////////////////////////////////
+
+string ceStyle = switch _ceStyle
+    "Dotted" => line.style_dotted
+    "Dashed" => line.style_dashed
+    "Solid"  => line.style_solid
+
+
+var box bxUp = na, var box bxDn = na, var line lnUp = na, var line lnDn = na
+var array<box> bxUpArr = array.new<box>(0), var array<line> lnUpArr = array.new<line>(0)
+var array<box> bxDnArr = array.new<box>(0), var array<line> lnDnArr = array.new<line>(0)
+lookbackCondFVG = bar_index > last_bar_index - barsBackFVG
+dnCE = high[1] + (low[3]-high[1])/2
+upCE = low[1] - (low[1]-high[3])/2
+if low[3] > high[1] and lookbackCondFVG  and showDN and showFVGs
+    bxDnArr.push(box.new(bar_index-2, low[3], bar_index, high[1], bgcolor = colDn, border_color = colorNone))
+    lnDnArr.push(line.new(bar_index-2, dnCE, bar_index, dnCE, color = showCE?ceCol:colorNone, style =ceStyle))
+if high[3] < low[1] and lookbackCondFVG  and showUP and showFVGs
+    bxUpArr.push(box.new(bar_index-2, low[1], bar_index, high[3], bgcolor = colUp, border_color = colorNone))
+    lnUpArr.push(line.new(bar_index-2, upCE, bar_index, upCE, color = showCE?ceCol:colorNone, style =ceStyle))
+var array<int> _countArr =array.new<int>(0)
+
+fvgBxExtToPrice(array<box> boxArray, array<line> lineArray, array<int> countArr, simple bool isBull, int maxSize) => 
+    if boxArray.size() > 0
+        for i = boxArray.size() -1 to 0
+            line ln = lineArray.get(i)
+            box bx = boxArray.get(i)
+            bx.set_right(bar_index)
+            int bxStart = bx.get_left()
+            int lnStart = ln.get_x1()
+            ln.set_x2(bar_index)
+            float threshold = isBull?(CEcond?ln.get_price(bar_index):(isBull?bx.get_top():bx.get_bottom())): -(CEcond?ln.get_price(bar_index):(isBull?bx.get_top():bx.get_bottom()))               
+            int m = isBull ? 1 : -1
+            float price = isBull ? high : -low  
+            if price > threshold 
+                if shrinkFVGonFill
+                    bx.set_left(bxStart)
+                    bx.set_right(bxStart+1)
+                    ln.set_x1(lnStart)
+                    ln.set_x2(lnStart+1)
+                boxArray.remove(i)
+                lineArray.remove(i)
+                countArr.push(isBull?1:-1) //for alerts; counter sum will decrement 1 on lower threshold hit, increment 1 on upper threshold hit
+    if boxArray.size() > maxSize
+        box.delete(boxArray.shift())
+        line.delete(lineArray.shift())
+
+fvgBxExtToPrice(bxDnArr,lnDnArr,_countArr, true, 12) //12 should be good for around 2200 bars of history
+fvgBxExtToPrice(bxUpArr, lnUpArr,_countArr, false, 12)
+
+upThresholdLst = array.sum(_countArr)>array.sum(_countArr)[1]
+dnThresholdLst = array.sum(_countArr)<array.sum(_countArr)[1]
+alertcondition(upThresholdLst, "FVG (SIBI) ABOVE threshold (CE or fvg High)", "FVG SIBI above threshold")
+alertcondition(dnThresholdLst, "FVG (BISI) BELOW threshold (CE or fvg low)", "FVG BISI below threshold")
+
+///  ~ Display Table ~
+test =array.size(STHboxArr)
+var Table = table.new(tabPos, columns = 4, rows =6, bgcolor = tabCol, border_width = 1)
+if barstate.islast and showTable and (showPivHighsLows or showSweepBoxes)
+    table.cell(Table, 0, 0, "Long-Term", text_color = txtCol, bgcolor = tabCol)
+    table.cell(Table, 0, 1, "last LTH = "+str.tostring(lastLTH, format.mintick),bgcolor = color.new(color.orange,70), text_color = txtCol)
+    table.cell(Table, 0, 2, "last LTL = " +str.tostring(lastLTL, format.mintick),bgcolor = color.new(color.orange,70), text_color = txtCol)
+    table.cell(Table, 1, 0, "Med-Term", text_color = txtCol, bgcolor = tabCol)
+    table.cell(Table, 1, 1, "last MTH = " +str.tostring(lastMTH, format.mintick),bgcolor = color.new(color.yellow,60), text_color = txtCol)
+    table.cell(Table, 1, 2, "last MTL = " +str.tostring(lastMTL, format.mintick),bgcolor = color.new(color.yellow,60), text_color = txtCol)
+    table.cell(Table, 2, 0, "Short-Term", text_color = txtCol, bgcolor = tabCol)
+    table.cell(Table, 2, 1, "last STH = "+str.tostring(lastSTH, format.mintick),bgcolor = color.new(color.gray,70), text_color = txtCol)
+    table.cell(Table, 2, 2, "last STL = " +str.tostring(lastSTL, format.mintick),bgcolor = color.new(color.gray,70), text_color = txtCol)
+
+if barstate.islast and showChochTable 
+    table.cell(Table, 1, 3, "Above HTF Up CHoCH:",bgcolor = tabCol, text_color = txtCol)//, text_halign = text.align_right)
+    //table.merge_cells(Table, 0, 3, 1, 3)
+    table.cell(Table, 1, 4, "Below HTF Down CHoCH:",bgcolor = tabCol, text_color = txtCol)//, text_halign = text.align_right)
+    //table.merge_cells(Table, 0, 4, 1, 4)
+    table.cell(Table, 2, 3, str.tostring(aboveLstUPcond),bgcolor =aboveLstUPcond? color.new(color.green,60): color.new(color.gray, 60), text_color = txtCol)
+    table.cell(Table, 2, 4, str.tostring(belowLstDNcond),bgcolor =belowLstDNcond? color.new(color.red,60): color.new(color.gray, 60), text_color = txtCol)
+

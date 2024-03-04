@@ -1,0 +1,17 @@
+{
+    "TEST_API": {    
+        "apiKey": "",
+        "secret": "",
+        "sendMessage": "true",
+        "amount" : 3500,
+        "test" : true
+    },
+    "WeiXuan": {    
+        "apiKey": "",
+        "secret": "",
+        "sendMessage": "true",
+        "amount" : 3500,
+        "test" : false
+    }
+}
+

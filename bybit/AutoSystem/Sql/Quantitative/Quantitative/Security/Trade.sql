@@ -1,0 +1,3 @@
+﻿CREATE SCHEMA [Trade]
+    AUTHORIZATION [dbo];
+

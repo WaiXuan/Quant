@@ -1,0 +1,149 @@
+//@version=5
+indicator("FVG Sessions [LuxAlgo]", overlay = true, max_lines_count = 500, max_boxes_count = 500)
+
+//------------------------------------------------------------------------------
+// 設定部分
+//------------------------------------------------------------------------------{
+
+// 定義了一些顏色變數，用於指標的外觀
+bullCss          = input.color(color.teal, 'FVG Level'               , inline = 'bull')
+bullAreaCss      = input.color(color.new(color.teal, 50), 'Area'     , inline = 'bull')
+bullMitigatedCss = input.color(color.new(color.teal, 80), 'Mitigated', inline = 'bull')
+
+bearCss          = input.color(color.red, 'FVG Level'                , inline = 'bear')
+bearAreaCss      = input.color(color.new(color.red, 50), 'Area'      , inline = 'bear')
+bearMitigatedCss = input.color(color.new(color.red, 80), 'Mitigated' , inline = 'bear')
+
+//------------------------------------------------------------------------------}
+// 自定義數據類型（UDT）
+//------------------------------------------------------------------------------{
+
+// 定義了自定義數據類型 "fvg" 來存儲有關 "Fair Value Gap" 的信息
+type fvg
+    float top
+    float btm
+    bool  mitigated
+    bool  isnew
+    bool  isbull
+    line  lvl
+    box   area
+
+// 定義了自定義數據類型 "session_range" 來存儲有關交易區域的信息
+type session_range
+    line max
+    line min
+
+//------------------------------------------------------------------------------}
+// 方法部分
+//------------------------------------------------------------------------------{
+
+n = bar_index
+
+// 設定 "Fair Value Gap" 的方法
+method set_fvg(fvg id, offset, bg_css, l_css)=>
+    avg = math.avg(id.top, id.btm)
+
+    area  = box.new(n - offset, id.top, n, id.btm, na, bgcolor = bg_css)
+    avg_l = line.new(n - offset, avg, n, avg, color = l_css, style = line.style_dashed)
+
+    id.lvl := avg_l
+    id.area := area
+
+// 設定交易區域的方法
+method set_range(session_range id)=>
+    max = math.max(high, id.max.get_y2())
+    min = math.min(low, id.min.get_y2())
+
+    id.max.set_xy2(n, max)
+    id.max.set_y1(max)
+
+    id.min.set_xy2(n, min)
+    id.min.set_y1(min)
+
+//------------------------------------------------------------------------------}
+// 變數部分
+//------------------------------------------------------------------------------{
+
+var chartCss = color.new(chart.fg_color, 50)
+
+// 創建 "fvg" 和 "session_range" 變數，並初始化為 "na"（未定義）
+var fvg sfvg = fvg.new(na, na, na, true, na)
+var session_range sesr = na
+
+var box area = na
+var line avg = na
+
+// 判斷是否出現新的 "Bullish FVG" 和 "Bearish FVG" 的條件
+bull_fvg = low > high[2] and close[1] > high[2]
+bear_fvg = high < low[2] and close[1] < low[2]
+
+// 警報條件變數
+bull_isnew      = false
+bear_isnew      = false
+bull_mitigated  = false
+bear_mitigated  = false
+within_bull_fvg = false
+within_bear_fvg = false
+
+//------------------------------------------------------------------------------}
+// 新交易日部分
+//------------------------------------------------------------------------------{
+
+dtf = timeframe.change('D')
+
+// 在新交易日時設定一條虛線作為分隔線
+if dtf
+    line.new(n, high + syminfo.mintick
+      , n, low - syminfo.mintick
+      , color = chartCss
+      , style = line.style_dashed
+      , extend = extend.both)
+
+    // 設定新的交易區域上下限
+    sesr := session_range.new(
+      line.new(n, high, n, high, color = chartCss)
+      , line.new(n, low, n, low, color = chartCss))
+
+    sfvg.isnew := true
+
+    // 設定前一交易日的 "Fair Value Gap" 右側座標
+    if not na(sfvg.lvl)
+        sfvg.lvl.set_x2(n-2)
+        sfvg.area.set_right(n-2)
+
+// 設定交易區域的上下限
+else if not na(sesr)
+    sesr.set_range()
+
+    // 根據是 "Bullish FVG" 還是 "Bearish FVG" 設定上下限線的顏色
+    sesr.max.set_color(sfvg.isbull ? bullCss : bearCss)
+    sesr.min.set_color(sfvg.isbull ? bullCss : bearCss)
+
+//------------------------------------------------------------------------------}
+// 設定 "Fair Value Gap"
+//------------------------------------------------------------------------------{
+
+// 如果出現新的 "Bullish FVG" 並且是新的交易日
+if bull_fvg and sfvg.isnew
+    sfvg := fvg.new(low, high[2], false, false, true)
+    sfvg.set_fvg(2, bullAreaCss, bullCss)
+
+    bull_isnew := true
+
+// 如果出現新的 "Bearish FVG" 並且是新的交易日
+else if bear_fvg and sfvg.isnew
+    sfvg := fvg.new(low[2], high, false, false, false)
+    sfvg.set_fvg(2, bearAreaCss, bearCss)
+
+    bear_isnew := true
+
+// 如果 "Fair Value Gap" 還未達到 "Mitigated" 狀態，根據價格更新透明度
+if not sfvg.mitigated
+    // 如果是 "Bullish FVG" 並且價格低於下限，將透明度設為 "bullMitigatedCss"
+    if sfvg.isbull and close < sfvg.btm
+        sfvg.set_fvg(1, bullMitigatedCss, bullCss)
+
+        sfvg.mitigated := true
+        bull_mitigated := true
+
+    // 如果是 "Bearish FVG" 並且價格高於上限，將透明度設為 "bearMitigatedCss

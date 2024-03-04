@@ -1,0 +1,11 @@
+{
+    "WeiXuan": {    
+        "apiKey": "",
+        "secret": "",
+        "password": "kaoweixuan",
+        "sendMessage": "true",
+        "amount" : 3500,
+        "test" : false
+    }
+}
+

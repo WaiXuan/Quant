@@ -1,0 +1,14 @@
+{
+    "Symbol": ["BTC", "ETH"],    
+    "Parameter": {
+        "timeframe" : "1h",
+        "TSL_SL1" : 3.1,
+        "TSL_SL2" : 9.9,
+        "TP_Ts1" : 1,
+        "TP_To" : 0.1,        
+        "isLeverage": 20
+    }
+}
+
+
+    

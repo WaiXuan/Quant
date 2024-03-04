@@ -1,0 +1,993 @@
+//@version=5
+indicator("Smart Money Concepts [LuxAlgo]", "Smart Money Concepts [LuxAlgo]", overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500, max_bars_back = 500)
+
+//-----------------------------------------------------------------------------{
+// 常量
+//-----------------------------------------------------------------------------{
+color TRANSP_CSS = #ffffff00
+
+// 提示工具
+string MODE_TOOLTIP = '允许显示历史结构或仅显示最近的结构'
+string STYLE_TOOLTIP = '指标颜色主题'
+string COLOR_CANDLES_TOOLTIP = '显示与结构检测到的当前趋势相关的额外蜡烛'
+string SHOW_INTERNAL = '显示内部市场结构'
+string CONFLUENCE_FILTER = '过滤掉不重要的内部结构突破'
+string SHOW_SWING = '显示摆动市场结构'
+string SHOW_SWING_POINTS = '在图表上显示摆动点标签'
+string SHOW_SWHL_POINTS = '突出显示最近的强势和弱势高点/低点'
+string INTERNAL_OB = '在图表上显示内部订单区块\n\n显示在图表上的内部订单区块数量'
+string SWING_OB = '在图表上显示摆动订单区块\n\n在图表上显示的摆动订单区块数量'
+string FILTER_OB = '用于过滤不稳定订单区块的方法\n\n建议在数据量较少时使用累积均值范围方法'
+string SHOW_EQHL = '在图表上显示等高和等低'
+string EQHL_BARS = '用于确认等高和等低的条形数量'
+string EQHL_THRESHOLD = '用于检测等高和等低的灵敏度阈值（0，1）\n\n较低的值将返回较少但更相关的结果'
+string SHOW_FVG = '在图表上显示公平价值间隙'
+string AUTO_FVG = '过滤掉不重要的公平价值间隙'
+string FVG_TF = '公平价值间隙的时间框架'
+string EXTEND_FVG = '确定要在图表上扩展多少根柱状图的公平价值间隙框'
+string PED_ZONES = '在图表上显示溢价、折扣和均衡区域'
+
+//-----------------------------------------------------------------------------{
+// 设置
+//-----------------------------------------------------------------------------{
+// 一般
+//----------------------------------------{
+mode = input.string('历史', options = ['历史', '现在'], group = '智能资金概念', tooltip = MODE_TOOLTIP)
+
+style = input.string('彩色', options = ['彩色', '单色'], group = '智能资金概念', tooltip = STYLE_TOOLTIP)
+
+show_trend = input(false, '颜色蜡烛', group = '智能资金概念', tooltip = COLOR_CANDLES_TOOLTIP)
+
+//----------------------------------------}
+// 内部结构
+//----------------------------------------{
+show_internals = input(true, '显示内部结构', group = '实时内部结构', tooltip = SHOW_INTERNAL)
+
+show_ibull = input.string('所有', '多头结构', options = ['所有', 'BOS', 'CHoCH'], inline = 'ibull', group = '实时内部结构')
+
+swing_ibull_css = input(#089981, '', inline = 'ibull', group = '实时内部结构')
+
+// 熊市结构
+show_ibear = input.string('所有', '空头结构', options = ['所有', 'BOS', 'CHoCH'], inline = 'ibear', group = '实时内部结构')
+
+swing_ibear_css = input(#f23645, '', inline = 'ibear', group = '实时内部结构')
+
+ifilter_confluence = input(false, '一致性过滤器', group = '实时内部结构', tooltip = CONFLUENCE_FILTER)
+
+internal_structure_size = input.string('微小', '内部标签大小', options = ['微小', '小', '正常'], group = '实时内部结构')
+
+//----------------------------------------}
+// 摆动结构
+//----------------------------------------{
+show_Structure = input(true, '显示摆动结构', group = '实时摆动结构', tooltip = SHOW_SWING)
+
+// 多头结构
+show_bull = input.string('所有', '多头结构', options = ['所有', 'BOS', 'CHoCH'], inline = 'bull', group = '实时摆动结构')
+
+swing_bull_css = input(#089981, '', inline = 'bull', group = '实时摆动结构')
+
+// 空头结构
+show_bear = input.string('所有', '空头结构', options = ['所有', 'BOS', 'CHoCH'], inline = 'bear', group = '实时摆动结构')
+
+swing_bear_css = input(#f23645, '', inline = 'bear', group = '实时摆动结构')
+
+swing_structure_size = input.string('小', '摆动标签大小', options = ['微小', '小', '正常'], group = '实时摆动结构')
+
+// 摆动点
+show_swings = input(false, '显示摆动点', inline = 'swings', group = '实时摆动结构', tooltip = SHOW_SWING_POINTS)
+
+length = input.int(50, '', minval = 10, inline = 'swings', group = '实时摆动结构')
+
+show_hl_swings = input(true, '显示强/弱高/低', group = '实时摆动结构', tooltip = SHOW_SWHL_POINTS)
+
+//----------------------------------------}
+// 订单区块
+//----------------------------------------{
+show_iob = input(true, '内部订单区块', inline = 'iob', group = '订单区块', tooltip = INTERNAL_OB)
+
+iob_showlast = input.int(5, '', minval = 1, inline = 'iob', group = '订单区块')
+
+show_ob = input(false, '摆动订单区块', inline = 'ob', group = '订单区块', tooltip = SWING_OB)
+
+ob_showlast = input.int(5, '', minval = 1, inline = 'ob', group = '订单区块')
+
+ob_filter = input.string('Atr', '订单区块过滤器', options = ['Atr', '累积均值范围'], group = '订单区块', tooltip = FILTER_OB)
+
+ibull_ob_css = input.color(color.new(#3179f5, 80), '内部多头订单区块', group = '订单区块')
+
+ibear_ob_css = input.color(color.new(#f77c80, 80), '内部空头订单区块', group = '订单区块')
+
+bull_ob_css = input.color(color.new(#1848cc, 80), '多头订单区块', group = '订单区块')
+
+bear_ob_css = input.color(color.new(#b22833, 80), '空头订单区块', group = '订单区块')
+
+//----------------------------------------}
+// EQH/EQL
+//----------------------------------------{
+show_eq = input(true, '等高/等低', group = 'EQH/EQL', tooltip = SHOW_EQHL)
+
+eq_len = input.int(3, '确认条数', minval = 1, group = 'EQH/EQL', tooltip = EQHL_BARS)
+
+eq_threshold = input.float(0.1, '阈值', minval = 0, maxval = 0.5, step = 0.1, group = 'EQH/EQL', tooltip = EQHL_THRESHOLD)
+
+eq_size = input.string('微小', '标签大小', options = ['微小', '小', '正常'], group = 'EQH/EQL')
+
+//----------------------------------------}
+// 公平价值间隙
+//----------------------------------------{
+show_fvg = input(false, '公平价值间隙', group = '公平价值间隙', tooltip = SHOW_FVG)
+
+fvg_auto = input(true, "自动阈值", group = '公平价值间隙', tooltip = AUTO_FVG)
+
+fvg_tf = input.timeframe('', "时间框架", group = '公平价值间隙', tooltip = FVG_TF)
+
+bull_fvg_css = input.color(color.new(#00ff68, 70), '多头公平价值间隙', group = '公平价值间隙')
+
+bear_fvg_css = input.color(color.new(#ff0008, 70), '空头公平价值间隙', group = '公平价值间隙')
+
+fvg_extend = input.int(1, "扩展公平价值间隙", minval = 0, group = '公平价值间隙', tooltip = EXTEND_FVG)
+
+//----------------------------------------}
+// 前一日/前一周高点/低点
+//----------------------------------------{
+// 每日
+show_pdhl = input(false, '每日', inline = 'daily', group = '高点与低点MTF')
+
+pdhl_style = input.string('⎯⎯⎯', '', options = ['⎯⎯⎯', '----', '····'], inline = 'daily', group = '高点与低点MTF')
+
+pdhl_css = input(#2157f3, '', inline = 'daily', group = '高点与低点MTF')
+
+// 每周
+show_pwhl = input(false, '每周', inline = 'weekly', group = '高点与低点MTF')
+
+pwhl_style = input.string('⎯⎯⎯', '', options = ['⎯⎯⎯', '----', '····'], inline = 'weekly', group = '高点与低点MTF')
+
+pwhl_css = input(#2157f3, '', inline = 'weekly', group = '高点与低点MTF')
+
+// 每月
+show_pmhl = input(false, '每月', inline = 'monthly', group = '高点与低点MTF')
+
+pmhl_style = input.string('⎯⎯⎯', '', options = ['⎯⎯⎯', '----', '····'], inline = 'monthly', group = '高点与低点MTF')
+
+pmhl_css = input(#2157f3, '', inline = 'monthly', group = '高点与低点MTF')
+
+//----------------------------------------}
+// 溢价/折扣区域
+//----------------------------------------{
+show_sd = input(false, '溢价/折扣区域', group = '溢价与折扣区域', tooltip = PED_ZONES)
+
+premium_css = input.color(#f23645, '溢价区域', group = '溢价与折扣区域')
+
+eq_css = input.color(#b2b5be, '均衡区域', group = '溢价与折扣区域')
+
+discount_css = input.color(#089981, '折扣区域', group = '溢价与折扣区域')
+
+//-----------------------------------------------------------------------------}
+// 函数
+//-----------------------------------------------------------------------------{
+n = bar_index
+
+atr = ta.atr(200)
+cmean_range = ta.cum(high - low) / n
+
+// 高低输出函数
+hl() => [high, low]
+
+// 获取OHLC值函数
+get_ohlc() => [close[1], open[1], high, low, high[2], low[2]]
+
+// 顯示結構函數
+display_Structure(x, y, txt, css, dashed, down, lbl_size) =>
+    // 創建一條線段
+    structure_line = line.new(x, y, n, y
+      , color = css
+      , style = dashed ? line.style_dashed : line.style_solid)
+
+    // 創建一個標籤
+    structure_lbl = label.new(int(math.avg(x, n)), y, txt
+      , color = TRANSP_CSS
+      , textcolor = css
+      , style = down ? label.style_label_down : label.style_label_up
+      , size = lbl_size)
+
+    if mode == 'Present'
+        // 如果模式為'Present'，則刪除線段和標籤
+        line.delete(structure_line[1])
+        label.delete(structure_lbl[1])
+
+// 轉折檢測/測量函數
+swings(len) =>
+    var os = 0
+
+    // 計算指定長度內的最高價格和最低價格
+    upper = ta.highest(len)
+    lower = ta.lowest(len)
+
+    // 判斷是否有轉折
+    os := high[len] > upper ? 0 : low[len] < lower ? 1 : os[1]
+
+    // 記錄最高價格和最低價格
+    top = os == 0 and os[1] != 0 ? high[len] : 0
+    btm = os == 1 and os[1] != 1 ? low[len] : 0
+
+    [top, btm]
+
+// 訂單區塊座標函數
+ob_coord(use_max, loc, target_top, target_btm, target_left, target_type) =>
+    min = 99999999.
+    max = 0.
+    idx = 1
+
+    ob_threshold = ob_filter == 'Atr' ? atr : cmean_range
+
+    // 在結構區間內尋找最高/最低高點並獲得範圍
+    if use_max
+        for i = 1 to (n - loc) - 1
+            if (high[i] - low[i]) < ob_threshold[i] * 2
+                max := math.max(high[i], max)
+                min := max == high[i] ? low[i] : min
+                idx := max == high[i] ? i : idx
+    else
+        for i = 1 to (n - loc) - 1
+            if (high[i] - low[i]) < ob_threshold[i] * 2
+                min := math.min(low[i], min)
+                max := min == low[i] ? high[i] : max
+                idx := min == low[i] ? i : idx
+
+    // 更新目標陣列
+    array.unshift(target_top, max)
+    array.unshift(target_btm, min)
+    array.unshift(target_left, time[idx])
+    array.unshift(target_type, use_max ? -1 : 1)
+
+// 設置訂單區塊
+display_ob(boxes, target_top, target_btm, target_left, target_type, show_last, swing, size)=>
+    for i = 0 to math.min(show_last-1, size-1)
+        // 獲取盒子
+        get_box = array.get(boxes, i)
+
+        // 設置盒子的位置和大小
+        box.set_lefttop(get_box, array.get(target_left, i), array.get(target_top, i))
+        box.set_rightbottom(get_box, array.get(target_left, i), array.get(target_btm, i))
+        box.set_extend(get_box, extend.right)
+
+        color css = na
+
+        if swing
+            if style == 'Monochrome'
+                css := array.get(target_type, i) == 1 ? color.new(#b2b5be, 80) : color.new(#5d606b, 80)
+                border_css = array.get(target_type, i) == 1 ? #b2b5be : #5d606b
+                box.set_border_color(get_box, border_css)
+            else
+                css := array.get(target_type, i) == 1 ? bull_ob_css : bear_ob_css
+                box.set_border_color(get_box, css)
+
+            box.set_bgcolor(get_box, css)
+        else
+            if style == 'Monochrome'
+                css := array.get(target_type, i) == 1 ? color.new(#b2b5be, 80) : color.new(#5d606b, 80)
+            else
+                css := array.get(target_type, i) == 1 ? ibull_ob_css : ibear_ob_css
+
+            box.set_border_color(get_box, css)
+            box.set_bgcolor(get_box, css)
+
+// 線樣式函數
+get_line_style(style) =>
+    out = switch style
+        '⎯⎯⎯' => line.style_solid
+        '----' => line.style_dashed
+        '····' => line.style_dotted
+
+// 設置先前高點/低點的線條和標籤函數
+phl(h, l, tf, css)=>
+    var line high_line = line.new(na,na,na,na
+      , xloc = xloc.bar_time
+      , color = css
+      , style = get_line_style(pdhl_style))
+
+    var label high_lbl = label.new(na,na
+      , xloc = xloc.bar_time
+      , text = str.format('P{0}H', tf)
+      , color = TRANSP_CSS
+      , textcolor = css
+      , size = size.small
+      , style = label.style_label_left)
+
+    var line low_line = line.new(na,na,na,na
+      , xloc = xloc.bar_time
+      , color = css
+      , style = get_line_style(pdhl_style))
+
+    var label low_lbl = label.new(na,na
+      , xloc = xloc.bar_time
+      , text = str.format('P{0}L', tf)
+      , color = TRANSP_CSS
+      , textcolor = css
+      , size = size.small
+      , style = label.style_label_left)
+
+    hy = ta.valuewhen(h != h[1], h, 1)
+    hx = ta.valuewhen(h == high, time, 1)
+
+    ly = ta.valuewhen(l != l[1], l, 1)
+    lx = ta.valuewhen(l == low, time, 1)
+
+    if barstate.islast
+        ext = time + (time - time[1]) * 20
+
+        // 設置高點線條和標籤
+        line.set_xy1(high_line, hx, hy)
+        line.set_xy2(high_line, ext, hy)
+
+        label.set_xy(high_lbl, ext, hy)
+
+        // 設置低點線條和標籤
+        line.set_xy1(low_line, lx, ly)
+        line.set_xy2(low_line, ext, ly)
+
+        label.set_xy(low_lbl, ext, ly)
+
+// 全局變量
+var trend = 0, var itrend = 0
+
+var top_y = 0., var top_x = 0
+var btm_y = 0., var btm_x = 0
+
+var itop_y = 0., var itop_x = 0
+var ibtm_y = 0., var ibtm_x = 0
+
+var trail_up = high, var trail_dn = low
+var trail_up_x = 0, var trail_dn_x = 0
+
+var top_cross = true, var btm_cross = true
+var itop_cross = true, var ibtm_cross = true
+
+var txt_top = '', var txt_btm = ''
+
+// 警報
+bull_choch_alert = false
+bull_bos_alert = false
+
+bear_choch_alert = false
+bear_bos_alert = false
+
+bull_ichoch_alert = false
+bull_ibos_alert = false
+
+bear_ichoch_alert = false
+bear_ibos_alert = false
+
+bull_iob_break = false
+bear_iob_break = false
+
+bull_ob_break = false
+bear_ob_break = false
+
+eqh_alert = false
+eql_alert = false
+
+// 結構顏色
+var bull_css = style == 'Monochrome' ? #b2b5be 
+  : swing_bull_css
+
+var bear_css = style == 'Monochrome' ? #b2b5be 
+  : swing_bear_css
+
+var ibull_css = style == 'Monochrome' ? #b2b5be 
+  : swing_ibull_css
+
+var ibear_css = style == 'Monochrome' ? #b2b5be 
+  : swing_ibear_css
+
+
+// 標籤大小
+var internal_structure_lbl_size = internal_structure_size == 'Tiny' 
+  ? size.tiny 
+  : internal_structure_size == 'Small' 
+  ? size.small 
+  : size.normal 
+
+var swing_structure_lbl_size = swing_structure_size == 'Tiny' 
+  ? size.tiny 
+  : swing_structure_size == 'Small' 
+  ? size.small 
+  : size.normal 
+
+var eqhl_lbl_size = eq_size == 'Tiny' 
+  ? size.tiny 
+  : eq_size == 'Small' 
+  ? size.small
+  : size.normal 
+
+//@version=5
+
+// 导入Swings指标
+[top, btm] = swings(length)
+[itop, ibtm] = swings(5)
+
+// ------------------------------------
+// Pivot High（高点）
+// ------------------------------------
+var line extend_top = na
+var label extend_top_lbl = label.new(na, na
+  , color = TRANSP_CSS
+  , textcolor = bear_css
+  , style = label.style_label_down
+  , size = size.tiny)
+
+if top
+    top_cross := true
+    txt_top := top > top_y ? 'HH' : 'LH'
+
+    if show_swings
+        top_lbl = label.new(n-length, top, txt_top
+          , color = TRANSP_CSS
+          , textcolor = bear_css
+          , style = label.style_label_down
+          , size = swing_structure_lbl_size)
+
+        if mode == 'Present'
+            label.delete(top_lbl[1])
+
+    // 将最近的高点延伸至最后一个柱状
+    line.delete(extend_top[1])
+    extend_top := line.new(n-length, top, n, top
+      , color = bear_css)
+
+    top_y := top
+    top_x := n - length
+
+    trail_up := top
+    trail_up_x := n - length
+
+if itop
+    itop_cross := true
+
+    itop_y := itop
+    itop_x := n - 5
+
+// 跟踪最大值
+trail_up := math.max(high, trail_up)
+trail_up_x := trail_up == high ? n : trail_up_x
+
+// 设置高点延伸的标签/线
+if barstate.islast and show_hl_swings
+    line.set_xy1(extend_top, trail_up_x, trail_up)
+    line.set_xy2(extend_top, n + 20, trail_up)
+
+    label.set_x(extend_top_lbl, n + 20)
+    label.set_y(extend_top_lbl, trail_up)
+    label.set_text(extend_top_lbl, trend < 0 ? 'Strong High' : 'Weak High')
+
+// ------------------------------------
+// Pivot Low（低点）
+// ------------------------------------
+var line extend_btm = na
+var label extend_btm_lbl = label.new(na, na
+  , color = TRANSP_CSS
+  , textcolor = bull_css
+  , style = label.style_label_up
+  , size = size.tiny)
+
+if btm
+    btm_cross := true
+    txt_btm := btm < btm_y ? 'LL' : 'HL'
+
+    if show_swings
+        btm_lbl = label.new(n - length, btm, txt_btm
+          , color = TRANSP_CSS
+          , textcolor = bull_css
+          , style = label.style_label_up
+          , size = swing_structure_lbl_size)
+
+        if mode == 'Present'
+            label.delete(btm_lbl[1])
+
+    // 将最近的低点延伸至最后一个柱状
+    line.delete(extend_btm[1])
+    extend_btm := line.new(n - length, btm, n, btm
+      , color = bull_css)
+
+    btm_y := btm
+    btm_x := n-length
+
+    trail_dn := btm
+    trail_dn_x := n-length
+
+if ibtm
+    ibtm_cross := true
+
+    ibtm_y := ibtm
+    ibtm_x := n - 5
+
+// 跟踪最小值
+trail_dn := math.min(low, trail_dn)
+trail_dn_x := trail_dn == low ? n : trail_dn_x
+
+// 设置低点延伸的标签/线
+if barstate.islast and show_hl_swings
+    line.set_xy1(extend_btm, trail_dn_x, trail_dn)
+    line.set_xy2(extend_btm, n + 20, trail_dn)
+
+    label.set_x(extend_btm_lbl, n + 20)
+    label.set_y(extend_btm_lbl, trail_dn)
+    label.set_text(extend_btm_lbl, trend > 0 ? 'Strong Low' : 'Weak Low')
+
+// 其他部分的注释可以在相应的代码块中添加，以便更好地理解代码的功能和逻辑。
+
+
+
+//-----------------------------------------------------------------------------}
+//Order Blocks Arrays
+//-----------------------------------------------------------------------------{
+
+
+  //@version=5  // 指定脚本的TradingView版本为5
+
+// 创建用于存储不同类型订单块的数组
+var iob_top = array.new_float(0)
+var iob_btm = array.new_float(0)
+var iob_left = array.new_int(0)
+var iob_type = array.new_int(0)
+
+var ob_top = array.new_float(0)
+var ob_btm = array.new_float(0)
+var ob_left = array.new_int(0)
+var ob_type = array.new_int(0)
+
+// 过滤条件，用于确定是否出现“bullish Concordant”（牛市一致）的情况
+var bull_concordant = true
+if ifilter_confluence
+    bull_concordant := high - math.max(close, open) > math.min(close, open - low)
+
+// 检测内部的“bullish Structure”（牛市结构）
+if ta.crossover(close, itop_y) and itop_cross and top_y != itop_y and bull_concordant
+    bool choch = na
+    
+    if itrend < 0
+        choch := true
+        bull_ichoch_alert := true
+    else 
+        bull_ibos_alert := true
+    
+    txt = choch ? 'CHoCH' : 'BOS'
+
+    if show_internals
+        if show_ibull == 'All' or (show_ibull == 'BOS' and not choch) or (show_ibull == 'CHoCH' and choch)
+            display_Structure(itop_x, itop_y, txt, ibull_css, true, true, internal_structure_lbl_size)
+    
+    itop_cross := false
+    itrend := 1
+    
+    // 内部的订单块
+    if show_iob
+        ob_coord(false, itop_x, iob_top, iob_btm, iob_left, iob_type)
+
+// 检测“bullish Structure”（牛市结构）
+if ta.crossover(close, top_y) and top_cross
+    bool choch = na
+    
+    if trend < 0
+        choch := true
+        bull_choch_alert := true
+    else 
+        bull_bos_alert := true
+
+    txt = choch ? 'CHoCH' : 'BOS'
+    
+    if show_Structure
+        if show_bull == 'All' or (show_bull == 'BOS' and not choch) or (show_bull == 'CHoCH' and choch)
+            display_Structure(top_x, top_y, txt, bull_css, false, true, swing_structure_lbl_size)
+    
+    // 订单块
+    if show_ob
+        ob_coord(false, top_x, ob_top, ob_btm, ob_left, ob_type)
+
+    top_cross := false
+    trend := 1
+
+// 同上，但这次是检测“bearish Structure”（熊市结构）
+// 你可以根据上述的注释理解这些代码
+
+
+//@version=5
+
+//-----------------------------------------------------------------------------}
+//Pivot Low BOS/CHoCH
+//-----------------------------------------------------------------------------{
+// 定義變數 bear_concordant 並賦予初始值 true
+var bear_concordant = true
+
+// 如果 ifilter_confluence 成立
+if ifilter_confluence
+    // 調整 bear_concordant 變數
+    bear_concordant := high - math.max(close, open) < math.min(close, open - low)
+
+// 檢測內部空頭結構
+if ta.crossunder(close, ibtm_y) and ibtm_cross and btm_y != ibtm_y and bear_concordant
+    bool choch = false
+    
+    // 如果 itrend 大於 0
+    if itrend > 0
+        choch := true
+        bear_ichoch_alert := true
+    else 
+        bear_ibos_alert := true
+    
+    txt = choch ? 'CHoCH' : 'BOS'
+
+    // 如果 show_internals 成立
+    if show_internals
+        // 條件檢查 show_ibear 的值
+        if show_ibear == 'All' or (show_ibear == 'BOS' and not choch) or (show_ibear == 'CHoCH' and choch)
+            display_Structure(ibtm_x, ibtm_y, txt, ibear_css, true, false, internal_structure_lbl_size)
+    
+    ibtm_cross := false
+    itrend := -1
+    
+    // 內部訂單區塊
+    if show_iob
+        ob_coord(true, ibtm_x, iob_top, iob_btm, iob_left, iob_type)
+
+// 檢測空頭結構
+if ta.crossunder(close, btm_y) and btm_cross
+    bool choch = na
+    
+    // 如果趨勢大於 0
+    if trend > 0
+        choch := true
+        bear_choch_alert := true
+    else 
+        bear_bos_alert := true
+
+    txt = choch ? 'CHoCH' : 'BOS'
+    
+    // 如果 show_Structure 成立
+    if show_Structure
+        // 條件檢查 show_bear 的值
+        if show_bear == 'All' or (show_bear == 'BOS' and not choch) or (show_bear == 'CHoCH' and choch)
+            display_Structure(btm_x, btm_y, txt, bear_css, false, false, swing_structure_lbl_size)
+    
+    // 訂單區塊
+    if show_ob
+        ob_coord(true, btm_x, ob_top, ob_btm, ob_left, ob_type)
+
+    btm_cross := false
+    trend := -1
+
+//-----------------------------------------------------------------------------}
+//訂單區塊
+//-----------------------------------------------------------------------------{
+// 設置訂單區塊變數
+var iob_boxes = array.new_box(0)
+var ob_boxes = array.new_box(0)
+
+// 如果 top/bottom 被突破，刪除內部訂單區塊的框框坐標
+for element in iob_type
+    index = array.indexof(iob_type, element)
+
+    if close < array.get(iob_btm, index) and element == 1
+        array.remove(iob_top, index) 
+        array.remove(iob_btm, index) 
+        array.remove(iob_left, index) 
+        array.remove(iob_type, index)
+        bull_iob_break := true
+
+    else if close > array.get(iob_top, index) and element == -1
+        array.remove(iob_top, index) 
+        array.remove(iob_btm, index)
+        array.remove(iob_left, index) 
+        array.remove(iob_type, index)
+        bear_iob_break := true
+
+// 如果 top/bottom 被突破，刪除訂單區塊的框框坐標
+for element in ob_type
+    index = array.indexof(ob_type, element)
+
+    if close < array.get(ob_btm, index) and element == 1
+        array.remove(ob_top, index) 
+        array.remove(ob_btm, index) 
+        array.remove(ob_left, index) 
+        array.remove(ob_type, index)
+        bull_ob_break := true
+
+    else if close > array.get(ob_top, index) and element == -1
+        array.remove(ob_top, index) 
+        array.remove(ob_btm, index)
+        array.remove(ob_left, index) 
+        array.remove(ob_type, index)
+        bear_ob_break := true
+
+// 計算內部訂單區塊和訂單區塊的大小
+iob_size = array.size(iob_type)
+ob_size = array.size(ob_type)
+
+// 如果是第一個bar
+if barstate.isfirst
+    // 如果要展示內部訂單區塊
+    if show_iob
+        // 創建內部訂單區塊的框框坐標
+        for i = 0 to iob_showlast-1
+            array.push(iob_boxes, box.new(na,na,na,na, xloc = xloc.bar_time))
+    // 如果要展示訂單區塊
+    if show_ob
+        // 創建訂單區塊的框框坐標
+        for i = 0 to ob_showlast-1
+            array.push(ob_boxes, box.new(na,na,na,na, xloc = xloc.bar_time))
+
+// 如果內部訂單區塊大小大於 0
+if iob_size > 0
+    // 如果是最後一個bar
+    if barstate.islast
+        // 顯示內部訂單區塊
+        display_ob(iob_boxes, iob_top, iob_btm, iob_left, iob_type, iob_showlast, false, iob_size)
+
+// 如果訂單區塊大小大於 0
+if ob_size > 0
+    // 如果是最後一個bar
+    if barstate.islast
+        // 顯示訂單區塊
+        display_ob(ob_boxes, ob_top, ob_btm, ob_left, ob_type, ob_showlast, true, ob_size)
+
+// 以下還有幾個部分，你可以繼續按照這種方式加上中文註解
+
+
+//@version=5
+// 設置Pine Script版本
+
+//-----------------------------------------------------------------------------}
+// EQH/EQL
+//-----------------------------------------------------------------------------{
+var eq_prev_top = 0.
+var eq_top_x = 0
+
+var eq_prev_btm = 0.
+var eq_btm_x = 0
+
+if show_eq
+    eq_top = ta.pivothigh(eq_len, eq_len)
+    eq_btm = ta.pivotlow(eq_len, eq_len)
+
+    if eq_top 
+        max = math.max(eq_top, eq_prev_top)
+        min = math.min(eq_top, eq_prev_top)
+        
+        if max < min + atr * eq_threshold
+            eqh_line = line.new(eq_top_x, eq_prev_top, n-eq_len, eq_top
+              , color = bear_css
+              , style = line.style_dotted)
+            
+            eqh_lbl = label.new(int(math.avg(n-eq_len, eq_top_x)), eq_top, 'EQH'
+              , color = #00000000
+              , textcolor = bear_css
+              , style = label.style_label_down
+              , size = eqhl_lbl_size)
+            
+            if mode == 'Present'
+                line.delete(eqh_line[1])
+                label.delete(eqh_lbl[1])
+            
+            eqh_alert := true
+            
+        eq_prev_top := eq_top
+        eq_top_x := n-eq_len
+
+    if eq_btm 
+        max = math.max(eq_btm, eq_prev_btm)
+        min = math.min(eq_btm, eq_prev_btm)
+        
+        if min > max - atr * eq_threshold
+            eql_line = line.new(eq_btm_x, eq_prev_btm, n-eq_len, eq_btm
+              , color = bull_css
+              , style = line.style_dotted)
+            
+            eql_lbl = label.new(int(math.avg(n-eq_len, eq_btm_x)), eq_btm, 'EQL'
+              , color = #00000000
+              , textcolor = bull_css
+              , style = label.style_label_up
+              , size = eqhl_lbl_size)
+            
+            eql_alert := true
+            
+            if mode == 'Present'
+                line.delete(eql_line[1])
+                label.delete(eql_lbl[1])
+            
+        eq_prev_btm := eq_btm
+        eq_btm_x := n-eq_len
+
+//-----------------------------------------------------------------------------}
+// Fair Value Gaps
+//-----------------------------------------------------------------------------{
+var bullish_fvg_max = array.new_box(0)
+var bullish_fvg_min = array.new_box(0)
+
+var bearish_fvg_max = array.new_box(0)
+var bearish_fvg_min = array.new_box(0)
+
+float bullish_fvg_avg = na
+float bearish_fvg_avg = na
+
+bullish_fvg_cnd = false
+bearish_fvg_cnd = false
+
+[src_c1, src_o1, src_h, src_l, src_h2, src_l2] =
+  request.security(syminfo.tickerid, fvg_tf, get_ohlc())
+
+if show_fvg
+    delta_per = (src_c1 - src_o1) / src_o1 * 100
+
+    change_tf = timeframe.change(fvg_tf)
+
+    threshold = fvg_auto ? ta.cum(math.abs(change_tf ? delta_per : 0)) / n * 2 
+      : 0
+
+    // FVG 條件
+    bullish_fvg_cnd := src_l > src_h2
+      and src_c1 > src_h2 
+      and delta_per > threshold
+      and change_tf
+
+    bearish_fvg_cnd := src_h < src_l2 
+      and src_c1 < src_l2 
+      and -delta_per > threshold
+      and change_tf
+
+    // FVG 區域
+    if bullish_fvg_cnd
+        array.unshift(bullish_fvg_max, box.new(n-1, src_l, n + fvg_extend, math.avg(src_l, src_h2)
+          , border_color = bull_fvg_css
+          , bgcolor = bull_fvg_css))
+        
+        array.unshift(bullish_fvg_min, box.new(n-1, math.avg(src_l, src_h2), n + fvg_extend, src_h2
+          , border_color = bull_fvg_css
+          , bgcolor = bull_fvg_css))
+    
+    if bearish_fvg_cnd
+        array.unshift(bearish_fvg_max, box.new(n-1, src_h, n + fvg_extend, math.avg(src_h, src_l2)
+          , border_color = bear_fvg_css
+          , bgcolor = bear_fvg_css))
+        
+        array.unshift(bearish_fvg_min, box.new(n-1, math.avg(src_h, src_l2), n + fvg_extend, src_l2
+          , border_color = bear_fvg_css
+          , bgcolor = bear_fvg_css))
+
+    for bx in bullish_fvg_min
+        if low < box.get_bottom(bx)
+            box.delete(bx)
+            box.delete(array.get(bullish_fvg_max, array.indexof(bullish_fvg_min, bx)))
+    
+    for bx in bearish_fvg_max
+        if high > box.get_top(bx)
+            box.delete(bx)
+            box.delete(array.get(bearish_fvg_min, array.indexof(bearish_fvg_max, bx)))
+
+//-----------------------------------------------------------------------------}
+// Previous day/week high/lows
+//-----------------------------------------------------------------------------{
+// 日高/低價
+[pdh, pdl] = request.security(syminfo.tickerid, 'D', hl()
+  , lookahead = barmerge.lookahead_on)
+
+// 週高/低價
+[pwh, pwl] = request.security(syminfo.tickerid, 'W', hl()
+  , lookahead = barmerge.lookahead_on)
+
+// 月高/低價
+[pmh, pml] = request.security(syminfo.tickerid, 'M', hl()
+  , lookahead = barmerge.lookahead_on)
+
+// 顯示日高/低價
+if show_pdhl
+    phl(pdh, pdl, 'D', pdhl_css)
+
+// 顯示週高/低價
+if show_pwhl
+    phl(pwh, pwl, 'W', pwhl_css)
+    
+// 顯示月高/低價
+if show_pmhl
+    phl(pmh, pml, 'M', pmhl_css)
+
+//-----------------------------------------------------------------------------}
+// Premium/Discount/Equilibrium zones
+//-----------------------------------------------------------------------------{
+var premium = box.new(na, na, na, na
+  , bgcolor = color.new(premium_css, 80)
+  , border_color = na)
+
+var premium_lbl = label.new(na, na
+  , text = '溢價'
+  , color = TRANSP_CSS
+  , textcolor = premium_css
+  , style = label.style_label_down
+  , size = size.small)
+
+
+//@version=5  // 指定脚本版本为TradingView版本5
+
+var eq = box.new(na, na, na, na
+  , bgcolor = color.rgb(120, 123, 134, 80)  // 创建一个矩形框，用于绘制“平衡”区域，设置背景颜色
+  , border_color = na)  // 设置边框颜色为无
+
+var eq_lbl = label.new(na, na
+  , text = 'Equilibrium'  // 创建一个文本标签，用于标记“平衡”区域
+  , color = TRANSP_CSS  // 设置文本背景颜色为透明
+  , textcolor = eq_css  // 设置文本颜色
+  , style = label.style_label_left  // 设置文本标签样式为左对齐
+  , size = size.small)  // 设置文本标签大小为小型
+
+var discount = box.new(na, na, na, na
+  , bgcolor = color.new(discount_css, 80)  // 创建一个矩形框，用于绘制“折扣”区域，设置背景颜色
+  , border_color = na)  // 设置边框颜色为无
+
+var discount_lbl = label.new(na, na
+  , text = 'Discount'  // 创建一个文本标签，用于标记“折扣”区域
+  , color = TRANSP_CSS  // 设置文本背景颜色为透明
+  , textcolor = discount_css  // 设置文本颜色
+  , style = label.style_label_up  // 设置文本标签样式为上对齐
+  , size = size.small)  // 设置文本标签大小为小型
+
+// 显示“溢价/折扣”区域
+if barstate.islast and show_sd
+    avg = math.avg(trail_up, trail_dn)
+
+    box.set_lefttop(premium, math.max(top_x, btm_x), trail_up)  // 设置“溢价”矩形框的左上角坐标
+    box.set_rightbottom(premium, n, .95 * trail_up + .05 * trail_dn)  // 设置“溢价”矩形框的右下角坐标
+
+    label.set_xy(premium_lbl, int(math.avg(math.max(top_x, btm_x), n)), trail_up)  // 设置“溢价”标签的位置坐标
+
+    box.set_lefttop(eq, math.max(top_x, btm_x), .525 * trail_up + .475*trail_dn)  // 设置“平衡”矩形框的左上角坐标
+    box.set_rightbottom(eq, n, .525 * trail_dn + .475 * trail_up)  // 设置“平衡”矩形框的右下角坐标
+
+    label.set_xy(eq_lbl, n, avg)  // 设置“平衡”标签的位置坐标
+
+    box.set_lefttop(discount, math.max(top_x, btm_x), .95 * trail_dn + .05 * trail_up)  // 设置“折扣”矩形框的左上角坐标
+    box.set_rightbottom(discount, n, trail_dn)  // 设置“折扣”矩形框的右下角坐标
+    label.set_xy(discount_lbl, int(math.avg(math.max(top_x, btm_x), n)), trail_dn)  // 设置“折扣”标签的位置坐标
+
+// 趋势
+var color trend_css = na
+
+if show_trend
+    if style == 'Colored'
+        trend_css := itrend == 1 ? bull_css : bear_css
+    else if style == 'Monochrome'
+        trend_css := itrend == 1 ? #b2b5be : #5d606b
+
+plotcandle(open, high, low, close
+  , color = trend_css  // 设置蜡烛图的颜色
+  , wickcolor = trend_css  // 设置蜡烛上下影线的颜色
+  , bordercolor = trend_css  // 设置蜡烛边框的颜色
+  , editable = false)
+
+// 警报
+// 内部结构
+alertcondition(bull_ibos_alert, 'Internal Bullish BOS', '形成内部牛市BOS')
+alertcondition(bull_ichoch_alert, 'Internal Bullish CHoCH', '形成内部牛市CHoCH')
+
+alertcondition(bear_ibos_alert, 'Internal Bearish BOS', '形成内部熊市BOS')
+alertcondition(bear_ichoch_alert, 'Internal Bearish CHoCH', '形成内部熊市CHoCH')
+
+// 波动结构
+alertcondition(bull_bos_alert, 'Bullish BOS', '形成牛市BOS')
+alertcondition(bull_choch_alert, 'Bullish CHoCH', '形成牛市CHoCH')
+
+alertcondition(bear_bos_alert, 'Bearish BOS', '形成熊市BOS')
+alertcondition(bear_choch_alert, 'Bearish CHoCH', '形成熊市CHoCH')
+
+// 订单块
+alertcondition(bull_iob_break, 'Bullish Internal OB Breakout', '价格突破内部牛市OB')
+alertcondition(bear_iob_break, 'Bearish Internal OB Breakout', '价格突破内部熊市OB')
+
+alertcondition(bull_ob_break, 'Bullish Swing OB Breakout', '价格突破牛市摆动OB')
+alertcondition(bear_ob_break, 'Bearish Swing OB Breakout', '价格突破熊市摆动OB')
+
+// EQH/EQL
+alertcondition(eqh_alert, 'Equal Highs', '检测到相等的高点')
+alertcondition(eql_alert, 'Equal Lows', '检测到相等的低点')
+
+// FVG
+alertcondition(bullish_fvg_cnd, 'Bullish FVG', '形成牛市FVG')
+alertcondition(bearish_fvg_cnd, 'Bearish FVG', '形成熊市FVG')

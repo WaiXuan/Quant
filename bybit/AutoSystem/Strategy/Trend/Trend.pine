@@ -1,0 +1,306 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Wei_Xuan
+//@version=5
+strategy("Run_Trend", overlay=true, initial_capital=2000, default_qty_type=strategy.cash, default_qty_value=2000, commission_type=strategy.commission.percent, commission_value=0.08,use_bar_magnifier=true)
+//-----------------------------------------------------------------------------{
+// Settings
+//-----------------------------------------------------------------------------{
+// Global
+//----------------------------------------{
+useDateFilter       = input.bool(false,                             title="USE BACKTEST RANGE ⏲️", group="BACKTEST RANGE")
+backtestStartDate   = input.time(timestamp("2024-02-15T00:00:00"),  title="StartDate",              group="BACKTEST RANGE")
+backtestEndDate     = input.time(timestamp("2099-11-10T14:00:00"),  title="EndDate",                group="BACKTEST RANGE")
+inTradeWindow       = not useDateFilter or (time >= backtestStartDate and time < backtestEndDate)
+//----------------------------------------}
+// External Indicator
+//----------------------------------------{
+isExternal      = input.bool(false,         title= 'isExternal',                    group="External Indicator")
+waveTrend       = input(close,              title= "External Indicator WaveTrend",  group="External Indicator")
+upperlimit      = input.int(100,            title= 'UpperLimit',                    group="External Indicator")
+lowerlimit      = input.int(-100,           title= 'LowerLimit',                    group="External Indicator")
+
+//----------------------------------------}
+// Position Setting
+//----------------------------------------{
+PS_Group        = 'POSITION'
+PS_Expect       = input.string('BOTH',      title= 'Expect',                        group=PS_Group,     options=['BOTH','LONG', 'SHORT']) // 預設是雙向持倉，可以鎖倉
+PS_Mode         = input.string('Capital',   title= 'Mode',                          group=PS_Group,     options=['Capital', 'Equity'])    // 部位模式是全倉還是滾倉
+PS_Initial      = input.int(100,            title= 'Initial(%)',                    group=PS_Group,     minval=1,       maxval=100)       // 初始部位是initial_capital的百分比
+isLevel         = input.int(1,              title= 'isLevel',                       group=PS_Group,     minval=1)
+
+//----------------------------------------}
+// Take Profit
+//----------------------------------------{
+TP_Group        = 'Take Profit'
+TP_Mode         = input.string('Trail',     title='Mode',               group=TP_Group,     options=['Trail', 'NonTrail'])
+TR_Long         = input.float(0.8,          title='Long Trail Target',  group=TP_Group,     minval=0,       step=0.1)   // 追蹤止盈
+TR_Short        = input.float(0.8,          title='Short Trail Target', group=TP_Group,     minval=0,       step=0.1)   // 追蹤止盈
+CL_Long         = input.float(1.01,          title='Close Long Min Target',  group=TP_Group,     minval=0,       step=0.01)  // 多頭關倉最小趴數
+CL_Short        = input.float(0.99,          title='Close Short Min Target', group=TP_Group,     minval=0,       step=0.01)  // 空頭關倉最小趴數
+TP_To           = input.float(0.1,          title='Trail Offset(%)',    group=TP_Group,     minval=0,       step=0.1)   // 追踪止盈的幅度
+
+//----------------------------------------}
+// Stop Loss
+//---------------------------------
+SL_Group        = 'Stop Loss'
+SL_EMA_Period   = input.int(676,    title='SL EMA',         group=SL_Group,     minval=1,       step=1000)
+SL_Long         = input.float(0.98,  title='SL Long',        group=SL_Group,     minval=0,       step=0.01)
+SL_Short        = input.float(1.02,  title='SL Short',       group=SL_Group,     minval=0,       step=0.01)
+SL_Perent       = input.float(10,   title='Total SL(%)',    group=SL_Group,     minval=0,       step=0.1)
+//----------------------------------------}
+// Blackflag
+//----------------------------------------{
+trailType = input.string('modified', title='Trailtype',  group='BLACK FLAG', options=['modified', 'unmodified'])
+ATRPeriod = input.int(200,           title='ATR Period', group='BLACK FLAG')
+ATRFactor = input.int(8,             title='ATR Factor', group='BLACK FLAG')
+//----------------------------------------}
+// ADX
+//----------------------------------------{
+ADX_Group       = 'ADX'
+ADX_Length      = input.int(14,             title='Length',             group=ADX_Group,    minval=1,       step=1)
+ADX_Smooth      = input.int(14,             title='Smooth',             group=ADX_Group,    minval=1,       step=1)
+ADX_Range       = input.float(25,           title='Range',              group=ADX_Group,    minval=1,       step=1)
+ADX_Trend       = input.float(50,           title='Trend',              group=ADX_Group,    minval=1,       step=1)
+//----------------------------------------}
+// CE EMA
+//----------------------------------------{
+ema_uptrend = input.int(34, title="EMA UpTrend", group = 'CE EMA', minval=1, maxval=300)
+//----------------------------------------}
+// RSI
+//----------------------------------------{
+rsiLengthInput  = input.int(14,         title="RSI Length", group="RSI Settings", minval=1)
+rsiSourceInput  = input.source(close,   title="Source",     group="RSI Settings")
+maTypeInput     = input.string("SMA",   title="MA Type",    group="RSI Settings", options=["SMA", "Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"])
+maLengthInput   = input.int(14,         title="MA Length",  group="RSI Settings")
+//----------------------------------------}
+// Chandelier Exit
+//----------------------------------------{
+var string chandelierExit = 'Chandelier Exit'
+length           = input.int(2,     title='ATR Period',                     group=chandelierExit)
+mult             = input.float(1.0, title='ATR Multiplier',                 group=chandelierExit, step=0.1)
+useClose         = input.bool(true, title='Use Close Price for Extremums',  group=chandelierExit)
+showLabels       = input.bool(false, title='Show Buy/Sell Labels',          group=chandelierExit)
+highlightState   = input.bool(true, title='Highlight State',                group=chandelierExit)
+
+//----------------------------------------}
+//-----------------------------------------------------------------------------}
+
+
+//-----------------------------------------------------------------------------{
+// Calculation
+//-----------------------------------------------------------------------------{
+// Blackflag
+//----------------------------------------{
+norm_o = request.security(ticker.new(syminfo.prefix, syminfo.ticker), timeframe.period, open)
+norm_h = request.security(ticker.new(syminfo.prefix, syminfo.ticker), timeframe.period, high)
+norm_l = request.security(ticker.new(syminfo.prefix, syminfo.ticker), timeframe.period, low)
+norm_c = request.security(ticker.new(syminfo.prefix, syminfo.ticker), timeframe.period, close)
+
+wild_ma(_src, _malength) =>
+    _wild = 0.0
+    _wild := nz(_wild[1]) + (_src - nz(_wild[1])) / _malength
+    _wild
+
+HiLo = math.min(norm_h - norm_l, 1.5 * nz(ta.sma(norm_h - norm_l, ATRPeriod)))
+HRef = norm_l <= norm_h[1] ? norm_h - norm_c[1] : norm_h - norm_c[1] - 0.5 * (norm_l - norm_h[1])
+LRef = norm_h >= norm_l[1] ? norm_c[1] - norm_l : norm_c[1] - norm_l - 0.5 * (norm_l[1] - norm_h)
+trueRange = trailType == 'modified' ? math.max(HiLo, HRef, LRef) : math.max(norm_h - norm_l, math.abs(norm_h - norm_c[1]), math.abs(norm_l - norm_c[1]))
+
+loss = ATRFactor * wild_ma(trueRange, ATRPeriod)
+Up = norm_c - loss
+Dn = norm_c + loss
+TrendUp = Up
+TrendDown = Dn
+Trend = 1
+TrendUp := norm_c[1] > TrendUp[1] ? math.max(Up, TrendUp[1]) : Up
+TrendDown := norm_c[1] < TrendDown[1] ? math.min(Dn, TrendDown[1]) : Dn
+Trend := norm_c > TrendDown[1] ? 1 : norm_c < TrendUp[1] ? -1 : nz(Trend[1], 1)
+trail = Trend == 1 ? TrendUp : TrendDown
+ex = 0.0
+ex := ta.crossover(Trend, 0) ? norm_h : ta.crossunder(Trend, 0) ? norm_l : Trend == 1 ? math.max(ex[1], norm_h) : Trend == -1 ? math.min(ex[1], norm_l) : ex[1]
+
+state = Trend == 1 ? 'long' : 'short'
+
+fib1Level = 61.8
+fib2Level = 78.6
+fib3Level = 88.6
+
+f1 = ex + (trail - ex) * fib1Level / 100
+f2 = ex + (trail - ex) * fib2Level / 100
+f3 = ex + (trail - ex) * fib3Level / 100
+l100 = trail + 0
+
+// Fib1 = plot(f1, 'Fib 1', style=plot.style_line, color=color.new(color.black, 0))
+// Fib2 = plot(f2, 'Fib 2', style=plot.style_line, color=color.new(color.black, 0))
+Fib3 = plot(f3, 'Fib 3', style=plot.style_line, color=color.new(color.black, 0))
+L100 = plot(l100, 'l100', style=plot.style_line, color=color.new(color.black, 0))
+
+// fill(Fib1, Fib2, color=state == 'long' ? color.new(color.green, 90) : state == 'short' ? color.new(color.red, 90) : na)//, transp=90)
+// fill(Fib2, Fib3, color=state == 'long' ? color.new(color.green, 70) : state == 'short' ? color.new(color.red, 70) : na)//, transp=90)
+fill(Fib3, L100, color=state == 'long' ? color.new(color.green, 60) : state == 'short' ? color.new(color.red, 60) : na)//, transp=90)
+
+//----------------------------------------}
+// CE EMA
+//----------------------------------------{
+usedEma = ta.ema(close, ema_uptrend)
+emaUpColor() => hlc3 >= usedEma
+emaDownColor() => hlc3  < usedEma
+col = hlc3  >= usedEma ? color.lime : hlc3  < usedEma ? color.red : color.white
+barcolor(emaUpColor() ? color.lime: emaDownColor() ? color.red : na)
+plot(usedEma, title="CE_EMA", style=plot.style_line, linewidth=3, color=col)
+ce_isbull = hlc3  >= usedEma
+//----------------------------------------}
+// RSI
+//----------------------------------------{
+ma(source, length, type) =>
+    switch type
+        "SMA" => ta.sma(source, length)
+        "Bollinger Bands" => ta.sma(source, length)
+        "EMA" => ta.ema(source, length)
+        "SMMA (RMA)" => ta.rma(source, length)
+        "WMA" => ta.wma(source, length)
+        "VWMA" => ta.vwma(source, length)
+
+
+up = ta.rma(math.max(ta.change(rsiSourceInput), 0), rsiLengthInput)
+down = ta.rma(-math.min(ta.change(rsiSourceInput), 0), rsiLengthInput)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+//----------------------------------------}
+// Chandelier Exit
+//----------------------------------------{
+atr = mult * ta.atr(length)
+
+longStop = (useClose ? ta.highest(close, length) : ta.highest(length)) - atr
+longStopPrev = nz(longStop[1], longStop)
+longStop := close[1] > longStopPrev ? math.max(longStop, longStopPrev) : longStop
+
+shortStop = (useClose ? ta.lowest(close, length) : ta.lowest(length)) + atr
+shortStopPrev = nz(shortStop[1], shortStop)
+shortStop := close[1] < shortStopPrev ? math.min(shortStop, shortStopPrev) : shortStop
+
+var int dir = 1
+dir := close > shortStopPrev ? 1 : close < longStopPrev ? -1 : dir
+
+var color longColor = color.green
+var color shortColor = color.red
+var color longFillColor = color.new(color.green, 90)
+var color shortFillColor = color.new(color.red, 90)
+var color textColor = color.new(color.white, 0)
+
+longStopPlot = plot(dir == 1 ? longStop : na, title='Long Stop', style=plot.style_linebr, linewidth=2, color=color.new(longColor, 0))
+buySignal = dir == 1 and dir[1] == -1
+plotshape(buySignal ? longStop : na, title='Long Stop Start', location=location.absolute, style=shape.circle, size=size.tiny, color=color.new(longColor, 0))
+plotshape(buySignal and showLabels ? longStop : na, title='Buy Label', text='Buy', location=location.absolute, style=shape.labelup, size=size.tiny, color=color.new(longColor, 0), textcolor=textColor)
+
+shortStopPlot = plot(dir == 1 ? na : shortStop, title='Short Stop', style=plot.style_linebr, linewidth=2, color=color.new(shortColor, 0))
+sellSignal = dir == -1 and dir[1] == 1
+plotshape(sellSignal ? shortStop : na, title='Short Stop Start', location=location.absolute, style=shape.circle, size=size.tiny, color=color.new(shortColor, 0))
+plotshape(sellSignal and showLabels ? shortStop : na, title='Sell Label', text='Sell', location=location.absolute, style=shape.labeldown, size=size.tiny, color=color.new(shortColor, 0), textcolor=textColor)
+
+midPricePlot = plot(ohlc4, title='', style=plot.style_circles, linewidth=0, display=display.none, editable=false)
+
+longStateFillColor = highlightState ? dir == 1 ? longFillColor : na : na
+shortStateFillColor = highlightState ? dir == -1 ? shortFillColor : na : na
+fill(midPricePlot, longStopPlot, title='Long State Filling', color=longStateFillColor)
+fill(midPricePlot, shortStopPlot, title='Short State Filling', color=shortStateFillColor)
+//----------------------------------------}
+// Chandelier Exit
+//----------------------------------------{
+fn_adx(len, smooth) =>
+    up_adx      =  ta.change(high)
+    dn      = -ta.change(low)
+    pdm     = na(up_adx) ? na : up_adx > dn and up_adx > 0 ? up_adx : 0
+    mdm     = na(dn) ? na : dn > up_adx and dn > 0 ? dn : 0
+    atr_adx     = ta.atr(len)
+    plus    = fixnan(100 * ta.rma(pdm, len) / atr_adx)
+    minus   = fixnan(100 * ta.rma(mdm, len) / atr_adx)
+    sum     = plus + minus
+    adx     = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), smooth)
+    [plus, minus, adx]
+
+[ADX_plus, ADX_minus, ADX] = fn_adx(ADX_Length, ADX_Smooth)
+//----------------------------------------}
+// Take Profit
+//----------------------------------------{
+// 這裡是把百分比全部轉換成點數
+
+var PIP_to  = 0.0
+var LTR_Point = 0.0
+var STR_Point = 0.0
+var take_profit = 0.0
+var float tr_price = na
+var stoploss = 0.
+
+if  barstate.isconfirmed
+    LTR_Point  := close * TR_Long / 100
+    STR_Point  := close * TR_Short / 100
+    PIP_to  := close * TP_To / syminfo.mintick / 100
+
+TICKER = syminfo.prefix + ':' + syminfo.ticker
+plot(strategy.position_avg_price, linewidth=2, color=color.white, style=plot.style_linebr, title='Average Price')    
+//----------------------------------------}    
+//-----------------------------------------------------------------------------}
+
+//-----------------------------------------------------------------------------{
+// Strategy
+//-----------------------------------------------------------------------------{
+slEma = ta.ema(close, SL_EMA_Period)
+plot(slEma, linewidth=2, color=color.yellow, style=plot.style_line, title='slEma')   
+
+if strategy.position_size > 0    
+    if sellSignal and barstate.isconfirmed and close > strategy.position_avg_price * CL_Long
+        strategy.close_all("【做多平倉】")
+    if close < slEma and close < strategy.position_avg_price * SL_Long
+        strategy.close_all("【做多止損】")
+
+if strategy.position_size < 0    
+    if buySignal and barstate.isconfirmed and close < strategy.position_avg_price * CL_Short
+        strategy.close_all("【做空平倉】")
+    if close > slEma and close > strategy.position_avg_price * SL_Short
+        strategy.close_all("【做空止損】")
+
+var TrendSigal = 'non'
+
+TrendSigal := buySignal ? "buySignal" : sellSignal ? "sellSignal" : TrendSigal
+
+var isFirst = false
+var lastState = state
+
+if lastState != state
+    lastState := state
+    isFirst := true
+
+
+if strategy.position_size == 0 and inTradeWindow
+    // 開多
+    if ce_isbull and state == 'long'and PS_Expect != 'SHORT' and barstate.isconfirmed and (buySignal or (TrendSigal == 'buySignal' and isFirst)) and (waveTrend < upperlimit or isExternal == false) and ADX > ADX_Trend
+        size = (PS_Mode == 'Capital' ? strategy.initial_capital : strategy.equity) / close * (PS_Initial / 100) * isLevel        
+        SIZE = str.tostring(size)
+        op_msg = '{"symbol":"'+TICKER+'","action":"OPEN","side":"LONG","size":' + SIZE + ',"comment":"OP-L@' + str.tostring(close, format.mintick) + '"}'
+        strategy.entry('LONG', strategy.long, qty=size, comment='OP-L@' + str.tostring(close, format.mintick), alert_message=op_msg)    
+        stoploss := close * (1 - SL_Perent / 100) 
+        tp_msg = '{"symbol":"'+TICKER+'","action":"CLOSE","side":"LONG","size":' + SIZE + ',"comment":"TP-L"}'
+        sl_msg = '{"symbol":"'+TICKER+'","action":"CLOSE","side":"LONG","size":' + SIZE + ',"comment":"SL-L"}'
+        tr_msg = '{"symbol":"'+TICKER+'","action":"CLOSE","side":"LONG","size":' + SIZE + ',"comment":"TR-L"}'
+        tr_price := TP_Mode =='NonTrail' ? na : close + LTR_Point
+        strategy.exit('CL-L', 'LONG', comment_profit='TP-L', comment_loss='SL-L', comment_trailing='TR-L@' + str.tostring(tr_price, format.mintick),
+           stop=stoploss,  trail_price =tr_price, trail_offset=PIP_to, alert_profit=tp_msg, alert_loss=sl_msg, alert_trailing=tr_msg)
+        isFirst := false
+
+    // 開空
+    else if ce_isbull == false and state == 'short' and PS_Expect != 'LONG' and barstate.isconfirmed and (sellSignal or (TrendSigal == 'sellSignal' and isFirst)) and (waveTrend > lowerlimit or isExternal == false) and ADX > ADX_Trend
+        size = (PS_Mode == 'Capital' ? strategy.initial_capital : strategy.equity) / close * (PS_Initial / 100) * isLevel        
+        SIZE = str.tostring(size)
+        op_msg = '{"symbol":"'+TICKER+'","action":"OPEN","side":"SHORT","size":' + SIZE + ',"comment":"OP-S@' + str.tostring(close, format.mintick) + '"}'
+        strategy.entry('SHORT', strategy.short, qty=size, comment='OP-S@' + str.tostring(close, format.mintick), alert_message=op_msg)    
+        stoploss := close * (1 + SL_Perent / 100)
+        tp_msg = '{"symbol":"'+TICKER+'","action":"CLOSE","side":"SHORT","size":' + SIZE + ',"comment":"TP-S"}'
+        sl_msg = '{"symbol":"'+TICKER+'","action":"CLOSE","side":"SHORT","size":' + SIZE + ',"comment":"SL-S"}'
+        tr_msg = '{"symbol":"'+TICKER+'","action":"CLOSE","side":"SHORT","size":' + SIZE + ',"comment":"TR-S"}'
+        tr_price := TP_Mode =='NonTrail' ? na : close - STR_Point
+        strategy.exit('CL-S', 'SHORT', comment_profit='TP-S', comment_loss='SL-S', comment_trailing='TR-S@' + str.tostring(tr_price, format.mintick),
+           stop=stoploss, limit = take_profit, trail_price =tr_price, trail_offset=PIP_to, alert_profit=tp_msg, alert_loss=sl_msg, alert_trailing=tr_msg)
+        isFirst := false
+
+//-----------------------------------------------------------------------------}
+        
